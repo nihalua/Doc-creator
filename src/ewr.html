@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EWR Oluşturucu</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #667085; --line: #d9dde4;
+    --accent: #1f5fbf; --accent-text: #fff; --warn: #b54708; --input: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171c; --card: #1d2128; --text: #e6e8ec; --muted: #9aa3b2; --line: #333a45;
+      --accent: #5b9bff; --accent-text: #0b1220; --warn: #f5a35c; --input: #232831;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            padding: 16px; margin-bottom: 16px; }
+  details > summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+  details[open] > summary { margin-bottom: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+  label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+  input, select, textarea { font: inherit; color: var(--text); background: var(--input);
+         border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+  textarea { resize: vertical; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text);
+           border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+                   font-weight: 600; padding: 10px 18px; }
+  button.icon { padding: 4px 9px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .days { display: flex; flex-direction: column; gap: 10px; }
+  .day { border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+         display: grid; gap: 8px 10px;
+         grid-template-columns: 150px 115px 115px 80px 80px 80px 70px auto; align-items: end; }
+  .day .act { grid-column: 1 / -1; }
+  .day .wd { font-size: 12px; color: var(--muted); }
+  .chk { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 8px; }
+  @media (max-width: 860px) {
+    .day { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  .summary { font-size: 13px; color: var(--muted); }
+  .summary b { color: var(--text); }
+  .err { color: var(--warn); font-weight: 600; }
+  iframe { width: 100%; height: 80vh; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>External Work Report oluşturucu</h1>
+  <p class="lead">Günleri seç, gerekirse aktiviteyi değiştir, <b>PDF oluştur</b>a bas. Sabit bilgiler bu tarayıcıda saklanır, bir dahaki sefere hazır gelir.</p>
+
+  <section>
+    <details id="profileBox">
+      <summary>Sabit bilgiler ve varsayılanlar (bir kere doldur)</summary>
+      <div class="grid">
+        <label>Client <input data-p="client"></label>
+        <label>Location <input data-p="location"></label>
+        <label>Requested by <input data-p="requestedBy"></label>
+        <label>Travel from - to <input data-p="travel" placeholder="Home to ..."></label>
+        <label>Yokogawa order number <input data-p="order"></label>
+        <label>Intervention number <input data-p="intervention"></label>
+        <label>Client reference <input data-p="clientRef"></label>
+        <label>Employee name <input data-p="employee"></label>
+        <label>EWR reference <input data-p="ewrRef"></label>
+      </div>
+      <h2 style="margin-top:16px">Yeni gün eklerken kullanılacak varsayılanlar</h2>
+      <div class="grid">
+        <label>Başlangıç <input type="time" data-p="start"></label>
+        <label>Bitiş <input type="time" data-p="end"></label>
+        <label>Öğle arası (saat) <input type="number" step="0.25" min="0" data-p="lunch"></label>
+        <label>Gidiş yolu (saat) <input type="number" step="0.25" min="0" data-p="travelTo"></label>
+        <label>Dönüş yolu (saat) <input type="number" step="0.25" min="0" data-p="travelBack"></label>
+        <label>Aktivite metni <input data-p="activity"></label>
+        <label>Çalışma saatleri satırı
+          <select data-p="split">
+            <option value="normal">Hepsi 08.00-17.00 satırına (örnekteki gibi)</option>
+            <option value="split">Saat dilimlerine böl (00-08 / 08-17 / 17-22 / 22-24)</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <section>
+    <h2>Çalışılan günler</h2>
+    <div class="days" id="days"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="addToday">+ Bugün</button>
+      <button id="addNext">+ Sonraki gün</button>
+      <button id="addDate">+ Tarih seç</button>
+      <input type="date" id="pickDate" style="display:none">
+    </div>
+  </section>
+
+  <section>
+    <h2>Rapor</h2>
+    <div class="grid">
+      <label>Rapor tarihi (imza tarihi) <input type="date" id="reportDate"></label>
+      <label>Hazırlık süresi (saat) <input type="number" step="0.25" min="0" id="prep" value="0"></label>
+    </div>
+    <label style="margin-top:10px">Particular details, follow-up
+      <textarea id="details" rows="3"></textarea>
+    </label>
+    <p class="summary" id="summary"></p>
+    <div class="row">
+      <button class="primary" id="make">PDF oluştur</button>
+      <span id="msg" class="err"></span>
+    </div>
+  </section>
+
+  <iframe id="preview" title="PDF önizleme" hidden></iframe>
+</main>
+
+<script>/*PDFLIB*/</script>
+<script>
+const TEMPLATE_B64 = "__TEMPLATE_B64__";
+const STORE_KEY = "ewr-generator-v1";
+
+const DEFAULT_PROFILE = {
+  client: "", location: "", requestedBy: "", travel: "", order: "", intervention: "",
+  clientRef: "", employee: "", ewrRef: "",
+  start: "08:30", end: "17:30", lunch: 0.5, travelTo: 1.5, travelBack: 1.5,
+  activity: "Travel to site, site support, travel back to home", split: "normal",
+};
+
+// ---------- storage ----------
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
+}
+function save() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      profile, days, details: $("#details").value, prep: $("#prep").value,
+    }));
+  } catch {}
+}
+
+const $ = s => document.querySelector(s);
+const stored = load();
+const profile = Object.assign({}, DEFAULT_PROFILE, stored.profile || {});
+let days = stored.days || [];
+
+// ---------- date helpers ----------
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const TR_DAYS = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"];
+const pad = n => String(n).padStart(2, "0");
+const parseISO = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const fmtMon = d => `${pad(d.getDate())}-${MON[d.getMonth()]}-${pad(d.getFullYear() % 100)}`; // 29-Oct-26
+const fmtNum = d => `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${pad(d.getFullYear() % 100)}`; // 29-10-26
+const weekSunday = d => addDays(d, -d.getDay());
+function isoWeek(d) { // returns [week, isoYear]
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return [Math.ceil(((t - yearStart) / 86400000 + 1) / 7), t.getUTCFullYear()];
+}
+const hm = s => { const [h, m] = (s || "0:0").split(":").map(Number); return h + m / 60; };
+const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
+const timeLabel = s => { const [h, m] = s.split(":"); return `${Number(h)}:${m}`; }; // 08:30 -> 8:30
+
+// ---------- hours ----------
+function dayHours(day) {
+  const s = hm(day.start), e = hm(day.end), lunch = num(day.lunch);
+  const net = Math.max(0, e - s - lunch);
+  const b = [0, 0, 0, 0]; // 00-08, 08-17, 17-22, 22-24
+  if (profile.split === "split") {
+    const win = [[0, 8], [8, 17], [17, 22], [22, 24]];
+    win.forEach(([a, z], i) => { b[i] = Math.max(0, Math.min(e, z) - Math.max(s, a)); });
+    let rest = lunch; // lunch comes out of normal hours first
+    for (const i of [1, 2, 0, 3]) { const t = Math.min(b[i], rest); b[i] -= t; rest -= t; }
+  } else {
+    b[1] = net;
+  }
+  const to = num(day.travelTo), back = num(day.travelBack);
+  return { b, travel: to + back, ret: to > 0 && back > 0 ? "R" : (to + back > 0 ? "S" : ""),
+           total: b.reduce((x, y) => x + y, 0) + to + back };
+}
+
+// ---------- UI ----------
+function bindProfile() {
+  document.querySelectorAll("[data-p]").forEach(el => {
+    el.value = profile[el.dataset.p];
+    el.addEventListener("input", () => { profile[el.dataset.p] = el.value; save(); refresh(); });
+  });
+  if (!profile.client && !profile.employee) $("#profileBox").open = true;
+}
+
+function newDay(iso) {
+  return { date: iso, start: profile.start, end: profile.end, lunch: profile.lunch,
+           travelTo: profile.travelTo, travelBack: profile.travelBack, hotel: false,
+           activity: profile.activity };
+}
+function addDay(iso) {
+  if (days.some(d => d.date === iso)) return;
+  days.push(newDay(iso));
+  days.sort((a, b) => a.date.localeCompare(b.date));
+  save(); renderDays();
+}
+
+function renderDays() {
+  const box = $("#days");
+  box.innerHTML = "";
+  if (!days.length) {
+    box.innerHTML = '<p class="summary">Henüz gün yok. “+ Bugün” veya “+ Tarih seç” ile ekle.</p>';
+  }
+  days.forEach((d, i) => {
+    const el = document.createElement("div");
+    el.className = "day";
+    el.innerHTML = `
+      <label>Tarih <input type="date" data-k="date"><span class="wd"></span></label>
+      <label>Başlangıç <input type="time" data-k="start"></label>
+      <label>Bitiş <input type="time" data-k="end"></label>
+      <label>Öğle (sa) <input type="number" step="0.25" min="0" data-k="lunch"></label>
+      <label>Gidiş (sa) <input type="number" step="0.25" min="0" data-k="travelTo"></label>
+      <label>Dönüş (sa) <input type="number" step="0.25" min="0" data-k="travelBack"></label>
+      <label class="chk"><input type="checkbox" data-k="hotel"> Otel</label>
+      <div class="row" style="justify-content:flex-end"><button class="icon" title="Sil">✕</button></div>
+      <label class="act">Aktivite <input data-k="activity"></label>`;
+    el.querySelectorAll("[data-k]").forEach(inp => {
+      const k = inp.dataset.k;
+      if (inp.type === "checkbox") inp.checked = !!d[k]; else inp.value = d[k];
+      inp.addEventListener("input", () => {
+        d[k] = inp.type === "checkbox" ? inp.checked : inp.value;
+        if (k === "date") { days.sort((a, b) => a.date.localeCompare(b.date)); save(); renderDays(); return; }
+        save(); refresh();
+      });
+    });
+    el.querySelector("button").onclick = () => { days.splice(i, 1); save(); renderDays(); };
+    el.querySelector(".wd").textContent = d.date ? TR_DAYS[parseISO(d.date).getDay()] : "";
+    box.appendChild(el);
+  });
+  refresh();
+}
+
+function weeksOf(list) {
+  const map = new Map();
+  list.filter(d => d.date).forEach(d => {
+    const k = toISO(weekSunday(parseISO(d.date)));
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(d);
+  });
+  return [...map.entries()].sort();
+}
+
+function refresh() {
+  const w = weeksOf(days);
+  let tot = 0, work = 0, trav = 0;
+  days.forEach(d => { const h = dayHours(d); tot += h.total; work += h.total - h.travel; trav += h.travel; });
+  $("#summary").innerHTML = days.length
+    ? `${days.length} gün · çalışma <b>${work.toFixed(2)}</b> sa · yol <b>${trav.toFixed(2)}</b> sa · toplam <b>${(tot + num($("#prep").value)).toFixed(2)}</b> sa · ${w.length} sayfa (her hafta bir sayfa)`
+    : "";
+}
+
+// ---------- PDF ----------
+const TR_MAP = { "ş":"s","Ş":"S","ğ":"g","Ğ":"G","ı":"i","İ":"I","’":"'","‘":"'","“":'"',"”":'"',"–":"-","—":"-" };
+function clean(font, s) {
+  s = String(s || "").replace(/[şŞğĞıİ’‘“”–—]/g, c => TR_MAP[c]);
+  let out = "";
+  for (const ch of s) { try { font.encodeText(ch); out += ch; } catch { out += "?"; } }
+  return out;
+}
+function wrap(font, size, text, width) {
+  const lines = [];
+  for (const para of text.split(/\r?\n/)) {
+    let line = "";
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      const t = line ? line + " " + word : word;
+      if (font.widthOfTextAtSize(t, size) <= width || !line) line = t;
+      else { lines.push(line); line = word; }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+// Coordinates (PDF points) measured from the original template.
+const FS = 6.6;
+const L = {
+  hdrLeftX: 129.14, hdrRightX: 389.59,
+  hdrY: { client: 700.3, location: 691.3, requestedBy: 682.3, start: 673.3, end: 664.3, week: 655.66 },
+  hdrRightY: { travel: 700.3, order: 691.3, intervention: 682.3, clientRef: 673.3, employee: 664.3, ewrRef: 655.66 },
+  dateX: 240.17, weekX: 155.66, yearX: 169.94,
+  dayY: [626.02, 607.66, 582.58, 558.31, 533.47, 508.39, 483.31],
+  dayLines: [2, 3, 3, 3, 3, 3, 3],
+  dayDateX: 90.144, actX: 129.14, actW: 405,
+  detailsX: 52.32, detailsY: 450, detailsW: 482, detailsLines: 6,
+  colC: [238.5, 288.0, 328.0, 368.0, 408.0, 448.0, 488.0], totalC: 523.6, prepC: 198.3,
+  gridDateY: 387.53,
+  rowY: { w0: 379.25, w1: 370.25, w2: 361.25, w3: 352.25, off: 343.25, trav: 334.25, ret: 325.25, hotel: 316.25, prep: 307.25, tot: 298.13 },
+  sigNameX: 52.32, sigNameY: 158.78, sigDateX: 90.144, sigDateY: 144.26,
+};
+
+async function buildPdf() {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const tplBytes = Uint8Array.from(atob(TEMPLATE_B64), c => c.charCodeAt(0));
+  const out = await PDFDocument.create();
+  const font = await out.embedFont(StandardFonts.Helvetica);
+  const black = rgb(0, 0, 0);
+  const reportDate = $("#reportDate").value ? parseISO($("#reportDate").value) : new Date();
+  const details = $("#details").value;
+  const prep = num($("#prep").value);
+  const weeks = weeksOf(days);
+
+  for (const [wi, [sunIso, wdays]] of weeks.entries()) {
+    const [tplPage] = await out.copyPages(await PDFDocument.load(tplBytes), [0]);
+    const page = out.addPage(tplPage);
+    const T = (s, x, y) => { s = clean(font, s); if (s) page.drawText(s, { x, y, size: FS, font, color: black }); };
+    const C = (s, cx, y) => { s = clean(font, s); if (s) T(s, cx - font.widthOfTextAtSize(s, FS) / 2, y); };
+    const sun = parseISO(sunIso);
+    const first = wdays[0], last = wdays[wdays.length - 1];
+
+    // header
+    T(profile.client, L.hdrLeftX, L.hdrY.client);
+    T(profile.location, L.hdrLeftX, L.hdrY.location);
+    T(profile.requestedBy, L.hdrLeftX, L.hdrY.requestedBy);
+    T(timeLabel(first.start), L.hdrLeftX, L.hdrY.start);
+    T(fmtNum(parseISO(first.date)), L.dateX, L.hdrY.start - 0.24);
+    T(timeLabel(last.end), L.hdrLeftX, L.hdrY.end);
+    T(fmtNum(parseISO(last.date)), L.dateX, L.hdrY.end - 0.24);
+    const [wk, wy] = isoWeek(addDays(sun, 1));
+    T(String(wk), L.weekX, L.hdrY.week);
+    T(String(wy), L.yearX, L.hdrY.week);
+    for (const k of Object.keys(L.hdrRightY)) T(profile[k], L.hdrRightX, L.hdrRightY[k]);
+
+    // week dates, activities, hours
+    const rows = { w0: [], w1: [], w2: [], w3: [], off: [], trav: [], tot: [] };
+    for (let i = 0; i < 7; i++) {
+      const date = addDays(sun, i);
+      T(fmtMon(date), L.dayDateX, L.dayY[i] + 0.0);
+      C(fmtMon(date), L.colC[i], L.gridDateY);
+      const d = wdays.find(x => x.date === toISO(date));
+      const h = d ? dayHours(d) : { b: [0, 0, 0, 0], travel: 0, ret: "", total: 0 };
+      if (d) {
+        const lines = wrap(font, FS, clean(font, d.activity), L.actW).slice(0, L.dayLines[i]);
+        lines.forEach((ln, j) => T(ln, L.actX, L.dayY[i] - j * 8.2));
+        h.b.forEach((v, j) => v > 0 && C(v.toFixed(2), L.colC[i], L.rowY["w" + j]));
+        if (h.travel > 0) C(h.travel.toFixed(2), L.colC[i], L.rowY.trav);
+        C(h.ret, L.colC[i], L.rowY.ret);
+        if (d.hotel) C("1", L.colC[i], L.rowY.hotel);
+      }
+      h.b.forEach((v, j) => rows["w" + j].push(v));
+      rows.trav.push(h.travel);
+      rows.off.push(0);
+      rows.tot.push(h.total);
+      C(h.total.toFixed(2), L.colC[i], L.rowY.tot);
+    }
+    const sum = a => a.reduce((x, y) => x + y, 0);
+    for (const k of ["w0", "w1", "w2", "w3", "off", "trav"]) C(sum(rows[k]).toFixed(2), L.totalC, L.rowY[k]);
+    const wkPrep = wi === 0 ? prep : 0;
+    if (wkPrep > 0) C(wkPrep.toFixed(2), L.prepC, L.rowY.prep);
+    C(wkPrep.toFixed(2), L.prepC, L.rowY.tot);
+    C((sum(rows.tot) + wkPrep).toFixed(2), L.totalC, L.rowY.tot);
+
+    // particular details
+    wrap(font, FS, clean(font, details), L.detailsW).slice(0, L.detailsLines)
+      .forEach((ln, j) => T(ln, L.detailsX, L.detailsY - j * 8.2));
+
+    // signature block
+    T(profile.employee, L.sigNameX, L.sigNameY);
+    T(fmtMon(reportDate), L.sigDateX, L.sigDateY);
+  }
+  out.setTitle("External Work Report");
+  return { bytes: await out.save(), weeks };
+}
+
+async function make() {
+  $("#msg").textContent = "";
+  const bad = days.find(d => !d.date || !d.start || !d.end);
+  if (!days.length) { $("#msg").textContent = "Önce en az bir gün ekle."; return; }
+  if (bad) { $("#msg").textContent = "Her günün tarihi, başlangıç ve bitiş saati dolu olmalı."; return; }
+  try {
+    const { bytes, weeks } = await buildPdf();
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const [wk, wy] = isoWeek(addDays(parseISO(weeks[0][0]), 1));
+    const client = (profile.client || "").replace(/[^\w-]+/g, "_").replace(/^_|_$/g, "");
+    const name = `External_Work_Report_${wy}-W${pad(wk)}${weeks.length > 1 ? "+" : ""}${client ? "_" + client : ""}.pdf`;
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    const fr = $("#preview"); fr.hidden = false; fr.src = url;
+  } catch (e) {
+    console.error(e); $("#msg").textContent = "PDF oluşturulamadı: " + e.message;
+  }
+}
+
+// ---------- init ----------
+bindProfile();
+$("#details").value = stored.details || "";
+$("#prep").value = stored.prep || 0;
+$("#reportDate").value = toISO(new Date());
+$("#details").addEventListener("input", save);
+$("#prep").addEventListener("input", () => { save(); refresh(); });
+$("#addToday").onclick = () => addDay(toISO(new Date()));
+$("#addNext").onclick = () => {
+  let d = days.length ? addDays(parseISO(days[days.length - 1].date), 1) : new Date();
+  while (d.getDay() === 0 || d.getDay() === 6) d = addDays(d, 1);
+  addDay(toISO(d));
+};
+$("#addDate").onclick = () => { const p = $("#pickDate"); p.style.display = ""; p.showPicker?.(); p.focus(); };
+$("#pickDate").addEventListener("change", e => { if (e.target.value) addDay(e.target.value); e.target.value = ""; e.target.style.display = "none"; });
+$("#make").onclick = make;
+renderDays();
+</script>
+</body>
+</html>
