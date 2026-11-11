@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EWR Oluşturucu</title>
+<title>EWR Generator</title>
 <style>
   :root {
     --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #667085; --line: #d9dde4;
@@ -55,12 +55,12 @@
 </head>
 <body>
 <main>
-  <h1>External Work Report oluşturucu</h1>
-  <p class="lead">Günleri seç, gerekirse aktiviteyi değiştir, <b>PDF oluştur</b>a bas. Sabit bilgiler bu tarayıcıda saklanır, bir dahaki sefere hazır gelir.</p>
+  <h1>External Work Report generator</h1>
+  <p class="lead">Add the days you worked on site, adjust the activity if needed and press <b>Create PDF</b>. Fixed details are saved in this browser for next time.</p>
 
   <section>
     <details id="profileBox">
-      <summary>Sabit bilgiler ve varsayılanlar (bir kere doldur)</summary>
+      <summary>Fixed details and defaults (fill in once)</summary>
       <div class="grid">
         <label>Client <input data-p="client"></label>
         <label>Location <input data-p="location"></label>
@@ -71,19 +71,27 @@
         <label>Client reference <input data-p="clientRef"></label>
         <label>Employee name <input data-p="employee"></label>
         <label>EWR reference <input data-p="ewrRef"></label>
+        <label>Signature text <input data-p="signature" placeholder="e.g. your first name"></label>
+        <label>Signature image (optional, replaces text)
+          <input type="file" id="sigFile" accept="image/png,image/jpeg">
+        </label>
+        <div class="row" style="align-items:flex-end">
+          <img id="sigPreview" alt="" style="max-height:36px;max-width:140px">
+          <button class="icon" id="sigClear" hidden>Remove image</button>
+        </div>
       </div>
-      <h2 style="margin-top:16px">Yeni gün eklerken kullanılacak varsayılanlar</h2>
+      <h2 style="margin-top:16px">Defaults for new days</h2>
       <div class="grid">
-        <label>Başlangıç <input type="time" data-p="start"></label>
-        <label>Bitiş <input type="time" data-p="end"></label>
-        <label>Öğle arası (saat) <input type="number" step="0.25" min="0" data-p="lunch"></label>
-        <label>Gidiş yolu (saat) <input type="number" step="0.25" min="0" data-p="travelTo"></label>
-        <label>Dönüş yolu (saat) <input type="number" step="0.25" min="0" data-p="travelBack"></label>
-        <label>Aktivite metni <input data-p="activity"></label>
-        <label>Çalışma saatleri satırı
+        <label>Start <input type="time" data-p="start"></label>
+        <label>End <input type="time" data-p="end"></label>
+        <label>Lunch break (h) <input type="number" step="0.25" min="0" data-p="lunch"></label>
+        <label>Travel to site (h) <input type="number" step="0.25" min="0" data-p="travelTo"></label>
+        <label>Travel back (h) <input type="number" step="0.25" min="0" data-p="travelBack"></label>
+        <label>Activity text <input data-p="activity"></label>
+        <label>Working time rows
           <select data-p="split">
-            <option value="normal">Hepsi 08.00-17.00 satırına (örnekteki gibi)</option>
-            <option value="split">Saat dilimlerine böl (00-08 / 08-17 / 17-22 / 22-24)</option>
+            <option value="normal">All in 08.00-17.00 row</option>
+            <option value="split">Split into 00-08 / 08-17 / 17-22 / 22-24</option>
           </select>
         </label>
       </div>
@@ -91,33 +99,30 @@
   </section>
 
   <section>
-    <h2>Çalışılan günler</h2>
+    <h2>Days on site</h2>
     <div class="days" id="days"></div>
     <div class="row" style="margin-top:10px">
-      <button id="addToday">+ Bugün</button>
-      <button id="addNext">+ Sonraki gün</button>
-      <button id="addDate">+ Tarih seç</button>
+      <button id="addToday">+ Today</button>
+      <button id="addNext">+ Next day</button>
+      <button id="addDate">+ Pick date</button>
       <input type="date" id="pickDate" style="display:none">
     </div>
   </section>
 
   <section>
-    <h2>Rapor</h2>
+    <h2>Report</h2>
     <div class="grid">
-      <label>Rapor tarihi (imza tarihi) <input type="date" id="reportDate"></label>
-      <label>Hazırlık süresi (saat) <input type="number" step="0.25" min="0" id="prep" value="0"></label>
+      <label>Preparation time (h) <input type="number" step="0.25" min="0" id="prep" value="0"></label>
     </div>
-    <label style="margin-top:10px">Particular details, follow-up
-      <textarea id="details" rows="3"></textarea>
-    </label>
+    <p class="summary">Signature date = the day after the last day on site.</p>
     <p class="summary" id="summary"></p>
     <div class="row">
-      <button class="primary" id="make">PDF oluştur</button>
+      <button class="primary" id="make">Create PDF</button>
       <span id="msg" class="err"></span>
     </div>
   </section>
 
-  <iframe id="preview" title="PDF önizleme" hidden></iframe>
+  <iframe id="preview" title="PDF preview" hidden></iframe>
 </main>
 
 <script>!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
@@ -146,6 +151,7 @@ const DEFAULT_PROFILE = {
   clientRef: "", employee: "", ewrRef: "",
   start: "08:30", end: "17:30", lunch: 0.5, travelTo: 1.5, travelBack: 1.5,
   activity: "Travel to site, site support, travel back to home", split: "normal",
+  signature: "", signatureImg: "",
 };
 
 // ---------- storage ----------
@@ -155,7 +161,7 @@ function load() {
 function save() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      profile, days, details: $("#details").value, prep: $("#prep").value,
+      profile, days, prep: $("#prep").value,
     }));
   } catch {}
 }
@@ -167,7 +173,7 @@ let days = stored.days || [];
 
 // ---------- date helpers ----------
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const TR_DAYS = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"];
+const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const pad = n => String(n).padStart(2, "0");
 const parseISO = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -229,21 +235,21 @@ function renderDays() {
   const box = $("#days");
   box.innerHTML = "";
   if (!days.length) {
-    box.innerHTML = '<p class="summary">Henüz gün yok. “+ Bugün” veya “+ Tarih seç” ile ekle.</p>';
+    box.innerHTML = '<p class="summary">No days yet. Add one with “+ Today” or “+ Pick date”.</p>';
   }
   days.forEach((d, i) => {
     const el = document.createElement("div");
     el.className = "day";
     el.innerHTML = `
-      <label>Tarih <input type="date" data-k="date"><span class="wd"></span></label>
-      <label>Başlangıç <input type="time" data-k="start"></label>
-      <label>Bitiş <input type="time" data-k="end"></label>
-      <label>Öğle (sa) <input type="number" step="0.25" min="0" data-k="lunch"></label>
-      <label>Gidiş (sa) <input type="number" step="0.25" min="0" data-k="travelTo"></label>
-      <label>Dönüş (sa) <input type="number" step="0.25" min="0" data-k="travelBack"></label>
-      <label class="chk"><input type="checkbox" data-k="hotel"> Otel</label>
-      <div class="row" style="justify-content:flex-end"><button class="icon" title="Sil">✕</button></div>
-      <label class="act">Aktivite <input data-k="activity"></label>`;
+      <label>Date <input type="date" data-k="date"><span class="wd"></span></label>
+      <label>Start <input type="time" data-k="start"></label>
+      <label>End <input type="time" data-k="end"></label>
+      <label>Lunch (h) <input type="number" step="0.25" min="0" data-k="lunch"></label>
+      <label>Travel to (h) <input type="number" step="0.25" min="0" data-k="travelTo"></label>
+      <label>Travel back (h) <input type="number" step="0.25" min="0" data-k="travelBack"></label>
+      <label class="chk"><input type="checkbox" data-k="hotel"> Hotel</label>
+      <div class="row" style="justify-content:flex-end"><button class="icon" title="Remove">✕</button></div>
+      <label class="act">Activity <input data-k="activity"></label>`;
     el.querySelectorAll("[data-k]").forEach(inp => {
       const k = inp.dataset.k;
       if (inp.type === "checkbox") inp.checked = !!d[k]; else inp.value = d[k];
@@ -254,7 +260,7 @@ function renderDays() {
       });
     });
     el.querySelector("button").onclick = () => { days.splice(i, 1); save(); renderDays(); };
-    el.querySelector(".wd").textContent = d.date ? TR_DAYS[parseISO(d.date).getDay()] : "";
+    el.querySelector(".wd").textContent = d.date ? DAY_NAMES[parseISO(d.date).getDay()] : "";
     box.appendChild(el);
   });
   refresh();
@@ -275,7 +281,7 @@ function refresh() {
   let tot = 0, work = 0, trav = 0;
   days.forEach(d => { const h = dayHours(d); tot += h.total; work += h.total - h.travel; trav += h.travel; });
   $("#summary").innerHTML = days.length
-    ? `${days.length} gün · çalışma <b>${work.toFixed(2)}</b> sa · yol <b>${trav.toFixed(2)}</b> sa · toplam <b>${(tot + num($("#prep").value)).toFixed(2)}</b> sa · ${w.length} sayfa (her hafta bir sayfa)`
+    ? `${days.length} day(s) · working <b>${work.toFixed(2)}</b> h · travel <b>${trav.toFixed(2)}</b> h · total <b>${(tot + num($("#prep").value)).toFixed(2)}</b> h · ${w.length} page(s) (one per week) · file: <b>${fileName(w)}.pdf</b>`
     : "";
 }
 
@@ -316,6 +322,7 @@ const L = {
   gridDateY: 387.53,
   rowY: { w0: 379.25, w1: 370.25, w2: 361.25, w3: 352.25, off: 343.25, trav: 334.25, ret: 325.25, hotel: 316.25, prep: 307.25, tot: 298.13 },
   sigNameX: 52.32, sigNameY: 158.78, sigDateX: 90.144, sigDateY: 144.26,
+  sigBox: { x: 54, y: 177, w: 105, h: 24 }, sigTextX: 90.144, sigTextY: 184, sigTextSize: 16,
 };
 
 async function buildPdf() {
@@ -324,8 +331,12 @@ async function buildPdf() {
   const out = await PDFDocument.create();
   const font = await out.embedFont(StandardFonts.Helvetica);
   const black = rgb(0, 0, 0);
-  const reportDate = $("#reportDate").value ? parseISO($("#reportDate").value) : new Date();
-  const details = $("#details").value;
+  const sigFont = await out.embedFont(StandardFonts.TimesRomanItalic);
+  let sigImg = null;
+  if (profile.signatureImg) {
+    const bytes = Uint8Array.from(atob(profile.signatureImg.split(",")[1]), c => c.charCodeAt(0));
+    sigImg = profile.signatureImg.startsWith("data:image/png") ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+  }
   const prep = num($("#prep").value);
   const weeks = weeksOf(days);
 
@@ -379,44 +390,69 @@ async function buildPdf() {
     C(wkPrep.toFixed(2), L.prepC, L.rowY.tot);
     C((sum(rows.tot) + wkPrep).toFixed(2), L.totalC, L.rowY.tot);
 
-    // particular details
-    wrap(font, FS, clean(font, details), L.detailsW).slice(0, L.detailsLines)
-      .forEach((ln, j) => T(ln, L.detailsX, L.detailsY - j * 8.2));
+    // "Particular details, follow-up" is intentionally left empty.
 
-    // signature block
+    // signature block: signature, name, date = day after the last day on site
+    if (sigImg) {
+      const s = Math.min(L.sigBox.w / sigImg.width, L.sigBox.h / sigImg.height);
+      page.drawImage(sigImg, { x: L.sigBox.x, y: L.sigBox.y, width: sigImg.width * s, height: sigImg.height * s });
+    } else {
+      const sig = clean(sigFont, profile.signature);
+      if (sig) page.drawText(sig, { x: L.sigTextX, y: L.sigTextY, size: L.sigTextSize, font: sigFont, color: rgb(0.05, 0.1, 0.35) });
+    }
     T(profile.employee, L.sigNameX, L.sigNameY);
-    T(fmtMon(reportDate), L.sigDateX, L.sigDateY);
+    T(fmtMon(addDays(parseISO(last.date), 1)), L.sigDateX, L.sigDateY);
   }
   out.setTitle("External Work Report");
   return { bytes: await out.save(), weeks };
 }
 
+// EWR_<Employee_Name>_<Location>_week<NN>  (e.g. EWR_Jane_Doe_HH1_week45)
+function fileName(weeks) {
+  const part = s => String(s || "").trim().replace(/[^\w-]+/g, "_").replace(/^_+|_+$/g, "");
+  const nums = weeks.map(([sun]) => isoWeek(addDays(parseISO(sun), 1))[0]);
+  const wk = nums.length ? pad(nums[0]) + (nums.length > 1 ? "-" + pad(nums[nums.length - 1]) : "") : "";
+  return ["EWR", part(profile.employee), part(profile.location), "week" + wk].filter(Boolean).join("_");
+}
+
+function bindSignature() {
+  const show = () => {
+    $("#sigPreview").src = profile.signatureImg || "";
+    $("#sigPreview").hidden = !profile.signatureImg;
+    $("#sigClear").hidden = !profile.signatureImg;
+  };
+  $("#sigFile").addEventListener("change", e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { profile.signatureImg = r.result; save(); show(); };
+    r.readAsDataURL(f);
+  });
+  $("#sigClear").onclick = () => { profile.signatureImg = ""; $("#sigFile").value = ""; save(); show(); };
+  show();
+}
+
 async function make() {
   $("#msg").textContent = "";
   const bad = days.find(d => !d.date || !d.start || !d.end);
-  if (!days.length) { $("#msg").textContent = "Önce en az bir gün ekle."; return; }
-  if (bad) { $("#msg").textContent = "Her günün tarihi, başlangıç ve bitiş saati dolu olmalı."; return; }
+  if (!days.length) { $("#msg").textContent = "Add at least one day first."; return; }
+  if (bad) { $("#msg").textContent = "Every day needs a date, start and end time."; return; }
   try {
     const { bytes, weeks } = await buildPdf();
     const blob = new Blob([bytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
-    const [wk, wy] = isoWeek(addDays(parseISO(weeks[0][0]), 1));
-    const client = (profile.client || "").replace(/[^\w-]+/g, "_").replace(/^_|_$/g, "");
-    const name = `External_Work_Report_${wy}-W${pad(wk)}${weeks.length > 1 ? "+" : ""}${client ? "_" + client : ""}.pdf`;
+    const name = fileName(weeks) + ".pdf";
     const a = document.createElement("a");
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     const fr = $("#preview"); fr.hidden = false; fr.src = url;
   } catch (e) {
-    console.error(e); $("#msg").textContent = "PDF oluşturulamadı: " + e.message;
+    console.error(e); $("#msg").textContent = "Could not create PDF: " + e.message;
   }
 }
 
 // ---------- init ----------
 bindProfile();
-$("#details").value = stored.details || "";
+bindSignature();
 $("#prep").value = stored.prep || 0;
-$("#reportDate").value = toISO(new Date());
-$("#details").addEventListener("input", save);
 $("#prep").addEventListener("input", () => { save(); refresh(); });
 $("#addToday").onclick = () => addDay(toISO(new Date()));
 $("#addNext").onclick = () => {
