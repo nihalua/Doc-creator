@@ -69,7 +69,13 @@
     return found;
   }
 
-  const NUM_RE = /%?[±+-]?\d+(?:[.,]\d+)*(?:\s?(?:%|°C|°F|°|mm|cm|km|m|kg|g|mg|t|ton|kN|N|MPa|kPa|Pa|bar|psi|V|kV|mA|A|kW|W|MW|Hz|kHz|MHz|s|sn|dk|min|h|saat|gün|days?|ay|yıl|years?|TL|USD|EUR|€|\$|adet|pcs|x)(?![\p{L}]))?/gu;
+  const NUM_RE = /(?<![\p{L}\d.,])%?[±+-]?\d+(?:[.,]\d+)*(?:\s?(?:%|°C|°F|°|mm|cm|km|m|kg|g|mg|t|ton|kN|N|MPa|kPa|Pa|bar|psi|V|kV|mA|A|kW|W|MW|Hz|kHz|MHz|s|sn|dk|min|h|saat|gün|days?|ay|yıl|years?|TL|USD|EUR|€|\$|adet|pcs|x)(?![\p{L}]))?(?![\p{L}\d])/gu;
+
+  // harf ve rakam içeren kodlar: etiket/tag adları (6981XV01001, GGG40, S698101001, I665101A57 …)
+  function codes(text) {
+    return (text.match(/[\p{L}\p{N}_.-]*\p{L}[\p{L}\p{N}_.-]*\d[\p{L}\p{N}_.-]*|[\p{L}\p{N}_.-]*\d[\p{L}\p{N}_.-]*\p{L}[\p{L}\p{N}_.-]*/gu) || [])
+      .map(s => s.replace(/[._-]+$/, ''));
+  }
 
   function numbers(text) {
     return (text.match(NUM_RE) || []).map(s => s.replace(/\s+/g, ' ').trim());
@@ -154,7 +160,8 @@
   function markBoilerplate(pages) {
     // pages: [[line,...], ...]
     const nPages = pages.length;
-    const keyOf = l => trLower(l.text).replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+    // yalnızca tek başına duran sayılar (sayfa no, tarih) genelleştirilir; 6981XV01001 / S35 gibi kodlar korunur
+    const keyOf = l => trLower(l.text).replace(/(?<![\p{L}\d])\d+(?![\p{L}\d])/gu, '#').replace(/\s+/g, ' ').trim();
     const EDGE = 3;
     const counts = new Map();
     pages.forEach(lines => {
@@ -205,6 +212,10 @@
     return body;
   }
 
+  const PAGE_FOOTER_RE = /(\bRev(?:ision)?\.?\s*[\w-]{1,4}\s+)?\b(Page|Sayfa|Sheet|Pg\.?)\s*\d+\s*(of|\/|von|de)\s*\d+\b/giu;
+  const TOC_RE = /(\.\s?){5,}\s*\d{1,4}\s*$|^\.{2,}\s*\d{1,4}$/u;
+  const REV_MARK_RE = /^(0\d|[A-Z]\d|R\d{1,2})$/;
+  const DELETED_RE = /^(deleted|silindi|removed|entfällt)$/i;
   const TOKEN_RE = /[\p{L}\p{N}](?:[\p{L}\p{N}._,/'%°&-]*[\p{L}\p{N}%°])?|[^\s\p{L}\p{N}]/gu;
 
   /**
@@ -213,8 +224,17 @@
    */
   function prepareDoc(pages, opts) {
     opts = opts || {};
-    if (opts.ignoreBoilerplate !== false) markBoilerplate(pages);
     const lines = [];
+    if (opts.ignoreBoilerplate !== false) {
+      markBoilerplate(pages);
+      pages.forEach(pl => pl.forEach(l => {
+        // tablo içine karışmış "Rev 02 Page 12 of 246" / "Sayfa 3 / 10" ifadeleri
+        const t = l.text.replace(PAGE_FOOTER_RE, ' ').replace(/\s+/g, ' ').trim();
+        if (t !== l.text) { l.text = t; if (!t) l.boiler = true; }
+        // içindekiler satırları (noktalı sayfa numarası: "2.1 Başlık ........ 12")
+        if (TOC_RE.test(l.text)) { l.boiler = true; l.toc = true; }
+      }));
+    }
     pages.forEach(pl => pl.forEach(l => lines.push(l)));
     const bodySize = detectHeadings(lines);
 
@@ -249,7 +269,31 @@
       pendingHyphen = last === '-' && m.length > 1 && !/\s-$/.test(l.text);
     });
 
-    return { pages: pages.length, lines, tokens, headingAt, bodySize };
+    let revMarks = [];
+    if (opts.ignoreRevMarks) {
+      // Kenar revizyon işaretleri: çok sık geçen, tek başına duran "02", "03", "A1" gibi kısa kodlar
+      const cnt = new Map();
+      tokens.forEach(t => { if (REV_MARK_RE.test(t.t)) cnt.set(t.t, (cnt.get(t.t) || 0) + 1); });
+      const limit = Math.max(15, pages.length * 0.3);
+      revMarks = [...cnt.entries()].filter(e => e[1] >= limit).map(e => e[0]);
+      if (revMarks.length) {
+        const set = new Set(revMarks);
+        const keep = [];
+        for (let i = 0; i < tokens.length; i++) {
+          const t = tokens[i];
+          if (set.has(t.t)) {
+            // "deleted 02" gibi yer tutucuları da kaldır
+            const prev = keep[keep.length - 1];
+            if (prev && DELETED_RE.test(prev.t)) keep.pop();
+            continue;
+          }
+          keep.push(t);
+        }
+        tokens.length = 0; keep.forEach(t => tokens.push(t));
+      }
+    }
+
+    return { pages: pages.length, lines, tokens, headingAt, bodySize, revMarks };
   }
 
   // ------------------------------------------------------------------
@@ -508,6 +552,17 @@
       reasons.push({ k: 'req', t });
     }
 
+    const cd = multisetDiff(codes(oldText), codes(newText));
+    if (cd.onlyA.length || cd.onlyB.length) {
+      score += 3;
+      const fmt = arr => arr.slice(0, 4).join(', ') + (arr.length > 4 ? ' …' : '');
+      let t;
+      if (cd.onlyA.length && cd.onlyB.length) t = 'Kod / etiket değişti: ' + fmt(cd.onlyA) + ' → ' + fmt(cd.onlyB);
+      else if (cd.onlyB.length) t = 'Yeni kod / etiket: ' + fmt(cd.onlyB);
+      else t = 'Kod / etiket kaldırıldı: ' + fmt(cd.onlyA);
+      reasons.push({ k: 'code', t });
+    }
+
     if (headingTouched) {
       score += 3;
       reasons.push({ k: 'head', t: 'Başlık / bölüm yapısı değişti' });
@@ -522,7 +577,7 @@
   }
 
   function buildStats(changes, A, B) {
-    const st = { ins: 0, del: 0, mod: 0, high: 0, med: 0, low: 0, cosmetic: 0, num: 0, req: 0, head: 0,
+    const st = { ins: 0, del: 0, mod: 0, high: 0, med: 0, low: 0, cosmetic: 0, num: 0, req: 0, head: 0, code: 0,
       wordsA: A.tokens.length, wordsB: B.tokens.length, pagesA: A.pages, pagesB: B.pages, sections: [] };
     const sec = new Map();
     for (const c of changes) {
@@ -641,7 +696,7 @@
     };
   }
 
-  const api = { buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
+  const api = { codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DocCore = api;
 })(typeof window !== 'undefined' ? window : this);

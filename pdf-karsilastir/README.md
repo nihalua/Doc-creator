@@ -34,7 +34,9 @@ Aynı dokümanın iki revizyonunu (ör. Rev A ve Rev B) karşılaştırıp arada
 
 ## Notlar ve sınırlamalar
 - Karşılaştırma kelime düzeyinde yapılır. Bu nedenle satır kaymaları ve sayfa düzeni değişiklikleri yanlış fark olarak görünmez.
-- Üst bilgi, alt bilgi ve sayfa numaraları varsayılan olarak yoksayılır; bunu ayarlardan kapatabilirsiniz.
+- Üst bilgi, alt bilgi, sayfa numaraları ("Rev 02 Page 12 of 246" tablo içine karışmış olsa bile) ve içindekiler satırları varsayılan olarak yoksayılır.
+- **Revizyon işaretleri** (kenar sütundaki "02", "03" ve "deleted 02" gibi yer tutucular) otomatik bulunur ve yoksayılır; hangi işaretlerin yoksayıldığı Genel Bakış'ta yazar. Ayarlardan kapatılabilir.
+- Harf ve rakam içeren kodlar (6981XV01001, S698101001, alarm adları vb.) "Kod / etiket" kategorisinde ayrıca işaretlenir.
 - Yalnızca noktalama veya büyük/küçük harf değişikliği olan farklar "biçimsel" olarak işaretlenir ve varsayılan olarak gizlenir.
 - **Taranmış (resim) PDF'lerde** metin yoktur. Bu dosyaların önce OCR'dan geçirilmesi gerekir; program bu durumda uyarı verir.
 - Şifreli PDF'ler desteklenmez.

@@ -78,7 +78,7 @@
       });
       status('Karşılaştırılıyor…');
       await tick();
-      const opts = { ignoreBoilerplate: $('optBoiler').checked, ignoreCase: $('optCase').checked };
+      const opts = { ignoreBoilerplate: $('optBoiler').checked, ignoreCase: $('optCase').checked, ignoreRevMarks: $('optRev').checked };
       const A = DocCore.prepareDoc(ra.pages, opts);
       const B = DocCore.prepareDoc(rb.pages, opts);
       const result = DocCore.compareDocs(A, B, opts);
@@ -193,6 +193,8 @@
       bullets.push('B revizyonunda A\'ya göre <b>' + real.length + '</b> içerik farkı tespit edildi; bunların <b>' + st.high + '</b> tanesi yüksek önemde.');
       if (st.num) bullets.push('<b>' + st.num + '</b> farkta sayısal değer (ölçü, miktar, tarih, süre, tolerans vb.) değişmiş.');
       if (st.req) bullets.push('<b>' + st.req + '</b> farkta yükümlülük / olumsuzluk ifadeleri (shall, must, zorunlu, -malıdır, değil vb.) değişmiş.');
+      if (st.code) bullets.push('<b>' + st.code + '</b> farkta kod / etiket adı (tag, sekans, alarm, ekipman numarası vb.) değişmiş.');
+      if (state.docs.A.revMarks.length || state.docs.B.revMarks.length) bullets.push('Yoksayılan revizyon işaretleri: A\'da ' + (state.docs.A.revMarks.join(', ') || '—') + ', B\'de ' + (state.docs.B.revMarks.join(', ') || '—') + '.');
       if (st.head) bullets.push('<b>' + st.head + '</b> farkta başlık veya bölüm yapısı etkilenmiş.');
       if (st.sections.length) bullets.push('En çok değişen bölüm: <b>' + esc(st.sections[0].name) + '</b> (' + st.sections[0].count + ' fark).');
       if (st.pagesA !== st.pagesB) bullets.push('Sayfa sayısı ' + st.pagesA + ' → ' + st.pagesB + ' olarak değişmiş.');
@@ -227,7 +229,7 @@
       h += '</tbody></table></div>';
       if (st.sections.length > 15) h += '<p class="small muted">… ve ' + (st.sections.length - 15) + ' bölüm daha.</p>';
     }
-    h += '<p class="note">Önem puanı otomatik hesaplanır: sayısal değer değişiklikleri, yükümlülük/olumsuzluk ifadeleri (shall/must/should, zorunlu, -malıdır, değil…), başlık değişiklikleri ve değişikliğin büyüklüğü dikkate alınır. Nihai değerlendirme için ilgili farkı mutlaka okuyun.</p>';
+    h += '<p class="note">Önem puanı otomatik hesaplanır: sayısal değer ve kod/etiket (tag) değişiklikleri, yükümlülük/olumsuzluk ifadeleri (shall/must/should, zorunlu, -malıdır, değil…), başlık değişiklikleri ve değişikliğin büyüklüğü dikkate alınır. Nihai değerlendirme için ilgili farkı mutlaka okuyun.</p>';
     return h;
   }
   function tile(n, l, cls) { return '<div class="tile ' + cls + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; }
@@ -377,7 +379,7 @@
   // ---------------------------------------------------------- paylaşım raporu
   // Sadece farklar: bağlam yok, doküman özeti yok, dosya adı yok, bölüm başlığı yok.
   // Her satırda: sıra, sayfa (A/B), tür, önem, değişiklik kategorisi, eski metin, yeni metin.
-  const REASON_CAT = { num: 'Sayısal değer', req: 'Yükümlülük / olumsuzluk ifadesi', head: 'Başlık / bölüm', size: 'Büyük değişiklik' };
+  const REASON_CAT = { code: 'Kod / etiket', num: 'Sayısal değer', req: 'Yükümlülük / olumsuzluk ifadesi', head: 'Başlık / bölüm', size: 'Büyük değişiklik' };
 
   function shareSide(c, want) {
     // yalnızca değişen bölüm (+ değişiklik içindeki en fazla 3 kelimelik ortak boşluklar); bağlam yok

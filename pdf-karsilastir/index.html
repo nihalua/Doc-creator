@@ -161,8 +161,9 @@ footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: c
     <div class="controls">
       <button class="primary" id="go" disabled>Karşılaştır</button>
       <button id="swap" title="A ile B'nin yerini değiştir">⇄ Yer değiştir</button>
-      <label><input type="checkbox" id="optBoiler" checked> Üst/alt bilgi ve sayfa numaralarını yoksay</label>
+      <label><input type="checkbox" id="optBoiler" checked> Üst/alt bilgi, sayfa numaraları ve içindekileri yoksay</label>
       <label><input type="checkbox" id="optCase"> Büyük/küçük harf farkını yoksay</label>
+      <label title="Kenardaki revizyon numaraları (02, 03…) ve &quot;deleted 02&quot; gibi yer tutucular karşılaştırmaya katılmaz"><input type="checkbox" id="optRev" checked> Revizyon işaretlerini yoksay (02, 03, "deleted 02"…)</label>
     </div>
     <div class="status" id="status"></div>
   </section>
