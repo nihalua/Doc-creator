@@ -216,7 +216,7 @@
   const TOC_RE = /(\.\s?){5,}\s*\d{1,4}\s*$|^\.{2,}\s*\d{1,4}$/u;
   const REV_MARK_RE = /^(0\d|[A-Z]\d|R\d{1,2})$/;
   const DELETED_RE = /^(deleted|silindi|removed|entfällt)$/i;
-  const TOKEN_RE = /[\p{L}\p{N}](?:[\p{L}\p{N}._,/'%°&-]*[\p{L}\p{N}%°])?|[^\s\p{L}\p{N}]/gu;
+  const TOKEN_RE = /[\p{L}\p{N}](?:[\p{L}\p{N}_._,/'%°&-]*[\p{L}\p{N}%°])?|[^\s\p{L}\p{N}]/gu;
 
   /**
    * Satır listesini (tüm sayfalar) karşılaştırmaya hazır yapıya çevirir.
@@ -709,10 +709,13 @@
 
   function idVariants(tok) {
     // orijinal yazımıyla test edilir: sıradan kelimeler (Valve, valve) tag sayılmaz; BÜYÜK HARF parametreler sayılır
-    const t = tok.replace(/[.\-_/]+$/, '');
+    const t = tok.replace(/^[.\-_/]+|[.\-_/]+$/g, '');
     const cands = [t];
-    const dot = t.indexOf('.');
-    if (dot > 3) cands.push(t.slice(0, dot)); // 6981AI01002.PV -> 6981AI01002
+    // noktalı yollar: SYSTEM.PROJE.6981AI01002.PV -> her parça ve ardışık ikililer (6981AI01002, 6981AI01002.PV …)
+    const seg = t.split('.').filter(Boolean);
+    if (seg.length > 1) {
+      seg.forEach((x, i) => { cands.push(x); if (i + 1 < seg.length) cands.push(x + '.' + seg[i + 1]); });
+    }
     const out = [];
     for (const c of cands) if (ID_RE.test(c)) out.push(c.toUpperCase());
     return out;
@@ -785,6 +788,32 @@
     return out.map(s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'));
   }
 
+  /** Tarih metnini çözer: 2026.10.26 / 2026-10-26 / 26.10.2026 / 26.10.26 (saat kısmı yoksayılır) */
+  function parseDate(s) {
+    if (!s) return null;
+    let m = String(s).match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = String(s).match(/(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})/);
+    if (m) { let y = +m[3]; if (y < 100) y += 2000; return new Date(y, +m[2] - 1, +m[1]); }
+    return null;
+  }
+
+  /** XML içindeki değişiklik geçmişi tarihleri (when="…", date="…", modified="…" öznitelikleri) */
+  function xmlDates(xmlText) {
+    const out = [];
+    const tagRe = /<[^>]*\b(?:when|date|modified|lastModified|changed|timestamp)\s*=\s*"[^"]*"[^>]*>/gi;
+    let t;
+    while ((t = tagRe.exec(xmlText))) {
+      const tag = t[0];
+      const dm = tag.match(/\b(?:when|date|modified|lastModified|changed|timestamp)\s*=\s*"([^"]+)"/i);
+      const d = dm && parseDate(dm[1]);
+      if (!d || isNaN(d)) continue;
+      const wm = tag.match(/\bwhat\s*=\s*"([^"]*)"/i), um = tag.match(/\bwho\s*=\s*"([^"]*)"/i);
+      out.push({ date: d, raw: dm[1], what: wm ? wm[1] : '', who: um ? um[1] : '' });
+    }
+    return out.sort((x, y) => x.date - y.date);
+  }
+
   /**
    * Bir display'in hangi revizyona ait olduğunu tahmin eder.
    * @param F  textFeatures çıktısı
@@ -836,7 +865,7 @@
     };
   }
 
-  const api = { revFeatures, textFeatures, xmlStrings, scoreDisplay, codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
+  const api = { parseDate, xmlDates, revFeatures, textFeatures, xmlStrings, scoreDisplay, codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DocCore = api;
 })(typeof window !== 'undefined' ? window : this);

@@ -36,10 +36,16 @@
   function renderLists() {
     $('revList').innerHTML = state.revs.map((r, i) =>
       '<div class="row"><span class="muted">' + (i + 1) + '.</span><input type="text" data-i="' + i + '" value="' + esc(r.label) + '" title="Revizyon etiketi">' +
+      '<input type="text" class="dt" data-d="' + i + '" value="' + esc(r.date || '') + '" placeholder="yayın tarihi" title="İsteğe bağlı: revizyonun yayın tarihi (gg.aa.yyyy). Display değişiklik tarihleriyle karşılaştırmak için.">' +
       '<span class="nm">' + esc(r.file.name) + '</span><button data-del="' + i + '" title="Listeden çıkar">✕</button></div>').join('');
     $('revHint').style.display = state.revs.length ? 'block' : 'none';
-    $('revList').querySelectorAll('input[type=text]').forEach(inp => inp.addEventListener('change', () => {
+    $('revList').querySelectorAll('input[type=text]:not(.dt)').forEach(inp => inp.addEventListener('change', () => {
       state.revs[+inp.dataset.i].label = inp.value.trim() || state.revs[+inp.dataset.i].label; sortRevs(); renderLists();
+    }));
+    $('revList').querySelectorAll('input.dt').forEach(inp => inp.addEventListener('change', () => {
+      const v = inp.value.trim();
+      if (v && !DocCore.parseDate(v)) { inp.style.borderColor = 'var(--bad-fg)'; return; }
+      inp.style.borderColor = ''; state.revs[+inp.dataset.d].date = v;
     }));
     $('revList').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { state.revs.splice(+b.dataset.del, 1); renderLists(); }));
     const n = state.disps.length;
@@ -135,7 +141,7 @@
           feat.pages = D.pages;
           revCache.set(key, feat);
         }
-        revs.push({ label: r.label, ids: feat.ids, ph: feat.ph, pages: feat.pages, file: r.file.name });
+        revs.push({ label: r.label, ids: feat.ids, ph: feat.ph, pages: feat.pages, file: r.file.name, date: r.date ? DocCore.parseDate(r.date) : null });
       }
       // revizyonlar arası ayırt edici ifade sayısı (bilgi amaçlı)
       const results = [];
@@ -148,6 +154,10 @@
           const text = await readXmlText(d.file);
           const F = DocCore.textFeatures(DocCore.xmlStrings(text));
           res = DocCore.scoreDisplay(F, revs);
+          const hist = DocCore.xmlDates(text);
+          res.history = hist;
+          res.lastChange = hist.length ? hist[hist.length - 1].date : null;
+          res.dateNote = dateCheck(res, revs);
         } catch (e) {
           res = { error: e.message || String(e) };
         }
@@ -167,6 +177,21 @@
       $('go').disabled = false;
     }
   });
+
+  const fmtDate = d => d ? d.toLocaleDateString('tr-TR') : '';
+  // Display'in son değişiklik tarihi bir revizyonun yayın tarihinden önceyse, display o revizyona göre güncellenmiş olamaz.
+  function dateCheck(r, revs) {
+    if (!r.lastChange || !revs.some(x => x.date)) return null;
+    const firstAfter = revs.findIndex(x => x.date && x.date > r.lastChange);
+    const note = { conflict: false, text: '' };
+    if (firstAfter >= 0) note.text = 'Son değişiklik ' + revs[firstAfter].label + ' yayınından (' + fmtDate(revs[firstAfter].date) + ') önce';
+    else note.text = 'Son değişiklik tüm revizyonlardan sonra';
+    if (!r.error && r.verdict === 'ok' && firstAfter >= 0 && r.best >= firstAfter) {
+      note.conflict = true;
+      note.text += ' — içerik ' + revs[r.best].label + ' gösteriyor, tarih uyuşmuyor (değişiklik geçmişi eksik tutulmuş olabilir)';
+    }
+    return note;
+  }
 
   // ------------------------------------------------------------ sonuçlar
   function classify(r) {
@@ -191,7 +216,7 @@
     tiles += '<div class="tile"><div class="n">' + res.filter(isMixed).length + '</div><div class="l">Karışık izler içeren</div></div>';
     tiles += '<div class="tile"><div class="n">' + (counts.unclear || 0) + '</div><div class="l">Belirsiz / yetersiz kanıt</div></div>';
     $('tiles').innerHTML = tiles;
-    $('thead').innerHTML = '<tr><th>Display</th><th>Tahmin</th>' + revs.map(r => '<th>' + esc(r.label) + '</th>').join('') + '<th title="Bu display\'de bulunan ve sadece bazı revizyonlarda geçen ifade sayısı">Ayırt edici</th></tr>';
+    $('thead').innerHTML = '<tr><th>Display</th><th>Tahmin</th>' + revs.map(r => '<th>' + esc(r.label) + '</th>').join('') + '<th title="Bu display\'de bulunan ve sadece bazı revizyonlarda geçen ifade sayısı">Ayırt edici</th><th>Son değişiklik</th></tr>';
     renderRows();
   }
 
@@ -217,14 +242,21 @@
         const p = r.error ? 0 : Math.round(100 * r.scores[i]);
         h += '<td class="pct"><span class="bar" style="width:' + Math.max(2, p * 0.6) + 'px"></span>' + (r.error ? '—' : p + '%') + '</td>';
       });
-      h += '<td class="n">' + (r.error ? '—' : r.nDisc) + '</td></tr>';
-      if (state.open.has(idx)) h += '<tr class="detail"><td colspan="' + (revs.length + 3) + '">' + evidenceHtml(r) + '</td></tr>';
+      h += '<td class="n">' + (r.error ? '—' : r.nDisc) + '</td><td>' + dateCell(r) + '</td></tr>';
+      if (state.open.has(idx)) h += '<tr class="detail"><td colspan="' + (revs.length + 4) + '">' + evidenceHtml(r) + '</td></tr>';
     });
-    if (!rows.length) h = '<tr><td colspan="' + (revs.length + 3) + '" class="muted">Bu filtreye uyan display yok.</td></tr>';
+    if (!rows.length) h = '<tr><td colspan="' + (revs.length + 4) + '" class="muted">Bu filtreye uyan display yok.</td></tr>';
     $('tbody').innerHTML = h;
     $('tbody').querySelectorAll('tr.main').forEach(tr => tr.addEventListener('click', () => {
       const i = +tr.dataset.i; if (state.open.has(i)) state.open.delete(i); else state.open.add(i); renderRows();
     }));
+  }
+
+  function dateCell(r) {
+    if (!r.lastChange) return '<span class="muted">—</span>';
+    let h = '<span class="pct">' + fmtDate(r.lastChange) + '</span>';
+    if (r.dateNote) h += '<div class="muted"' + (r.dateNote.conflict ? ' style="color:var(--warn-fg)"' : '') + '>' + (r.dateNote.conflict ? '⚠ ' : '') + esc(r.dateNote.text) + '</div>';
+    return h;
   }
 
   function chips(list, max) {
@@ -243,7 +275,9 @@
     if (r.support.length) h += '<h4>✔ ' + esc(revs[r.best].label) + ' lehine kanıt (' + esc(revs[r.second].label) + ' revizyonunda olmayan ifadeler)</h4>' + chips(r.support.map(e => ({ f: e.f, kind: e.kind, in: e.in })));
     if (r.conflict.length) h += '<h4>⚠ Çelişen ifadeler: ' + esc(revs[r.best].label) + ' revizyonunda yok, başka revizyonlarda var</h4>' + chips(r.conflict);
     if (r.outdated.length) h += '<h4>⟳ Güncellenmesi gerekebilir: son revizyonda (' + esc(revs[revs.length - 1].label) + ') artık bulunmayan ifadeler</h4>' + chips(r.outdated);
-    if (!r.support.length && !r.conflict.length && !r.outdated.length) h += '<p class="muted">Ayırt edici kanıt yok.</p>';
+    if (!r.support.length && !r.conflict.length && !r.outdated.length) h += '<p class="muted">Ayırt edici kanıt yok: display\'deki tag ve metinler revizyonlar arasında değişmemiş ya da dokümanda hiç geçmiyor.</p>';
+    if (r.history && r.history.length) h += '<h4>🕒 Display değişiklik geçmişi</h4><div class="muted">' +
+      r.history.slice(-10).map(x => esc(fmtDate(x.date)) + (x.what ? ' — ' + esc(x.what) : '') + (x.who ? ' (' + esc(x.who) + ')' : '')).join('<br>') + '</div>';
     return h + '</div>';
   }
 
@@ -263,13 +297,13 @@
 
   $('csv').addEventListener('click', () => {
     const revs = state.revData;
-    const head = ['Display', 'Tahmin', 'Güven', 'Karışık'].concat(revs.map(r => r.label + ' %'), ['Ayırt edici', 'Lehine kanıt', 'Çelişen', 'Güncellenmesi gerekebilir']);
+    const head = ['Display', 'Tahmin', 'Güven', 'Karışık'].concat(revs.map(r => r.label + ' %'), ['Ayırt edici', 'Son değişiklik', 'Tarih notu', 'Lehine kanıt', 'Çelişen', 'Güncellenmesi gerekebilir']);
     const lines = [head.map(csvCell).join(';')];
     state.results.forEach(r => {
       const c = classify(r);
       lines.push([r.name, c.text, r.error ? '' : CONF[r.confidence], isMixed(r) ? 'evet' : '']
         .concat(revs.map((x, i) => r.error ? '' : Math.round(100 * r.scores[i])),
-          [r.error ? '' : r.nDisc, list(r.support), list(r.conflict), list(r.outdated)]).map(csvCell).join(';'));
+          [r.error ? '' : r.nDisc, fmtDate(r.lastChange), r.dateNote ? r.dateNote.text : '', list(r.support), list(r.conflict), list(r.outdated)]).map(csvCell).join(';'));
     });
     download('﻿' + lines.join('\r\n'), 'display-revizyon.csv', 'text/csv;charset=utf-8');
   });
@@ -277,15 +311,15 @@
   $('html').addEventListener('click', () => {
     const revs = state.revData;
     let body = '<div class="wrap"><header class="top"><h1>Display Revizyon Tespiti — Rapor</h1><span class="muted">' + esc(new Date().toLocaleString('tr-TR')) + '</span></header>';
-    body += '<p class="muted">Revizyonlar (eskiden yeniye): ' + revs.map(r => esc(r.label) + ' (' + esc(r.file) + ')').join(' → ') + '</p>';
+    body += '<p class="muted">Revizyonlar (eskiden yeniye): ' + revs.map(r => esc(r.label) + ' (' + esc(r.file) + (r.date ? ', ' + fmtDate(r.date) : '') + ')').join(' → ') + '</p>';
     body += '<div class="tiles">' + $('tiles').innerHTML + '</div>';
     body += '<table class="res"><thead>' + $('thead').innerHTML + '</thead><tbody>';
     state.results.forEach(r => {
       const c = classify(r);
       body += '<tr><td>' + esc(r.name) + '</td><td><span class="badge ' + c.cls + '">' + esc(c.text) + '</span>' + (isMixed(r) ? '<span class="mix">⚠ karışık</span>' : '') + '</td>' +
         revs.map((x, i) => '<td class="pct">' + (r.error ? '—' : Math.round(100 * r.scores[i]) + '%') + '</td>').join('') +
-        '<td class="n">' + (r.error ? '—' : r.nDisc) + '</td></tr>';
-      if (c.key !== 'cur' || isMixed(r)) body += '<tr class="detail"><td colspan="' + (revs.length + 3) + '">' + evidenceHtml(r) + '</td></tr>';
+        '<td class="n">' + (r.error ? '—' : r.nDisc) + '</td><td>' + dateCell(r) + '</td></tr>';
+      if (c.key !== 'cur' || isMixed(r)) body += '<tr class="detail"><td colspan="' + (revs.length + 4) + '">' + evidenceHtml(r) + '</td></tr>';
     });
     body += '</tbody></table>' + document.querySelector('#results .note').outerHTML + '</div>';
     const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +

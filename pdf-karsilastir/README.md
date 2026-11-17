@@ -65,9 +65,14 @@ SCADA ekranlarının (ör. Yokogawa CI Server display XML dosyaları) dokümanı
 - Yalnızca bazı revizyonlarda geçen ifadeler **ayırt edici** kabul edilir.
 - Her XML'deki öznitelik değerleri ve metinler okunur. Display'in ayırt edici ifadelerinin hangi revizyonla en çok örtüştüğüne bakılır.
 - Tag eşleşmesi, ifade eşleşmesinden daha güçlü kanıt sayılır.
-- `6981AI01002.PV` gibi değerler hem tam halleriyle hem de nokta öncesi kısımlarıyla eşleştirilir.
+- Noktalı yollar (Yokogawa CI Server'daki `<value>SYSTEM.PROJE.6981AI01002.PV</value>` gibi) parçalarına ayrılır. Her parça ve ardışık ikililer (`6981AI01002`, `6981AI01002.PV`) ayrı ayrı aranır.
 - Hiçbir revizyonda geçmeyen XML içerikleri (koordinat, renk, nesne kimliği…) hesaba katılmaz. Bu sayede XML şemasını bilmeye gerek kalmaz.
 - XML kodlaması (UTF-8, UTF-16, Shift_JIS vb.) dosyanın başından otomatik algılanır.
+
+## Tarih kontrolü (isteğe bağlı)
+Revizyonların yayın tarihlerini girerseniz (gg.aa.yyyy), display XML'lerindeki değişiklik geçmişi (`<revisionHistory>` → `when="…"`) ile karşılaştırılır:
+- "Son değişiklik Rev 03 yayınından önce": Display, Rev 03 yayınlandıktan sonra hiç değiştirilmemiş.
+- İçerik Rev 03 gösterdiği halde tarih daha eskiyse uyarı verilir. Bu durumda büyük olasılıkla değişiklik geçmişi eksik tutulmuştur.
 
 ## Sonuçlar
 | Sonuç | Anlamı |
