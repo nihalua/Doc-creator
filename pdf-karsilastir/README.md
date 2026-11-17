@@ -48,3 +48,44 @@ Aynı dokümanın iki revizyonunu (ör. Rev A ve Rev B) karşılaştırıp arada
 - `core.js`: satır oluşturma, üst ve alt bilgi tespiti, başlık tespiti, fark algoritması (Myers O(ND) ve patience bölütleme), önem puanlaması, özetleme
 - `app.js`: arayüz
 - `lib/`: Mozilla pdf.js 3.11.174 (Apache 2.0 lisansı, `lib/PDFJS-LICENSE`)
+
+---
+
+# Display Revizyon Tespiti (`display-revizyon.html`)
+
+SCADA ekranlarının (ör. Yokogawa CI Server display XML dosyaları) dokümanın **hangi revizyonuna göre** yapıldığını tahmin eder. Ana sayfadaki "Display revizyon tespiti →" bağlantısıyla ya da `display-revizyon.html` dosyasına çift tıklayarak açılır.
+
+## Kullanım
+1. Dokümanın **tüm revizyonlarını** (PDF) yükleyin. Etiketler dosya adından tahmin edilir (`..._Rev02.pdf` → "Rev 02"). Gerekirse düzeltin. Liste eskiden yeniye sıralanır; en alttaki revizyon "güncel" kabul edilir.
+2. Display XML dosyalarını seçin. Klasör de seçebilir veya sürükleyebilirsiniz; alt klasörler de okunur.
+3. **Analiz et**'e basın.
+
+## Nasıl çalışır?
+- Her revizyondan tag / parametre adları (6981XV01001, CALZEROSUC…) ve 3 kelimelik ifadeler (operatör mesajları gibi) çıkarılır.
+- Yalnızca bazı revizyonlarda geçen ifadeler **ayırt edici** kabul edilir.
+- Her XML'deki öznitelik değerleri ve metinler okunur. Display'in ayırt edici ifadelerinin hangi revizyonla en çok örtüştüğüne bakılır.
+- Tag eşleşmesi, ifade eşleşmesinden daha güçlü kanıt sayılır.
+- `6981AI01002.PV` gibi değerler hem tam halleriyle hem de nokta öncesi kısımlarıyla eşleştirilir.
+- Hiçbir revizyonda geçmeyen XML içerikleri (koordinat, renk, nesne kimliği…) hesaba katılmaz. Bu sayede XML şemasını bilmeye gerek kalmaz.
+- XML kodlaması (UTF-8, UTF-16, Shift_JIS vb.) dosyanın başından otomatik algılanır.
+
+## Sonuçlar
+| Sonuç | Anlamı |
+|---|---|
+| **Rev 03 (güncel)** | Display en güncel revizyonla uyumlu |
+| **Rev 02** (kırmızı) | Display eski bir revizyona göre yapılmış |
+| **⚠ karışık** | Display'de birden fazla revizyonun izleri var (kısmen güncellenmiş olabilir) |
+| **Belirsiz** | İki revizyon arasında ayırt edilemedi |
+| **Yetersiz kanıt** | Display'de sadece tüm revizyonlarda ortak olan ifadeler var |
+
+Satıra tıklayınca kanıtlar görünür:
+- **Lehine kanıt:** Tahmin edilen revizyona özgü ifadeler.
+- **Çelişen ifadeler:** Başka revizyonlara ait ifadeler.
+- **Güncellenmesi gerekebilir:** Display'de olan ama son revizyonda artık bulunmayan ifadeler.
+
+Sonuçlar CSV (Excel) veya HTML rapor olarak indirilebilir.
+
+## Sınırlamalar
+- Sadece metin karşılaştırılır. Renk, yerleşim ve sembol gibi görsel farklar tespit edilemez.
+- Bir revizyonda **eklenen** bir öğenin display'de **eksik** olması bu yöntemle güvenilir şekilde bulunamaz, çünkü hangi öğenin hangi display'de olması gerektiği bilinmiyor. Program display'de **fazla veya eski** olan ifadeleri bulur.
+- Revizyonlar arasında değişmeyen konuları gösteren display'ler için karar verilemez ("Yetersiz kanıt").

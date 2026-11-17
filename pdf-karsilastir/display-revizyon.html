@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Güvenlik: sayfa hiçbir dış sunucuya bağlanamaz (connect-src 'none'). Dosyalar bilgisayarınızdan çıkmaz. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Display Revizyon Tespiti</title>
+<style id="app-style">
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dde1e8;
+  --accent: #2f5bd3; --accent-soft: #e7edfc;
+  --ok-bg: #d9f4df; --ok-fg: #0f5a26; --bad-bg: #fbdcdc; --bad-fg: #8a1414; --warn-bg: #fdeccc; --warn-fg: #8a5200;
+  --shadow: 0 1px 2px rgba(20,30,50,.06), 0 2px 8px rgba(20,30,50,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d; --panel: #1c2028; --text: #e6e9ef; --muted: #9aa3b2; --border: #313744;
+    --accent: #7ea2ff; --accent-soft: #24304d;
+    --ok-bg: #173a22; --ok-fg: #9fe3b0; --bad-bg: #45201f; --bad-fg: #ffb3ad; --warn-bg: #3d2f17; --warn-fg: #f0b45a;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+header.top h1 { font-size: 22px; margin: 0; }
+header.top a { color: var(--accent); font-size: 14px; }
+.privacy { font-size: 13px; color: var(--ok-fg); background: var(--ok-bg); padding: 6px 12px; border-radius: 999px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 18px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+.drop { border: 2px dashed var(--border); border-radius: 12px; padding: 18px 16px; text-align: center; cursor: pointer; display: block; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop input { display: none; }
+.drop .lbl { font-weight: 650; font-size: 16px; }
+.hint, .muted { color: var(--muted); font-size: 13px; }
+.flist { margin-top: 10px; font-size: 14px; }
+.flist .row { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px dotted var(--border); }
+.flist .row .nm { flex: 1; word-break: break-all; }
+.flist input[type=text] { width: 90px; font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
+.flist button { padding: 1px 8px; font-size: 13px; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); padding: 7px 14px; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; padding: 9px 22px; }
+@media (prefers-color-scheme: dark) { button.primary { color: #0d1220; } }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 16px; }
+.status { margin-top: 12px; font-size: 14px; color: var(--muted); min-height: 1.4em; white-space: pre-line; }
+.status.err { color: var(--bad-fg); }
+#results { margin-top: 22px; display: none; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.tile .n { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .l { font-size: 13px; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
+.filters input[type=search], .filters select { font: inherit; font-size: 14px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+.filters input[type=search] { flex: 1; min-width: 200px; }
+table.res { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table.res th, table.res td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+table.res th { font-size: 12.5px; color: var(--muted); font-weight: 600; background: var(--bg); }
+table.res td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.res tr.main { cursor: pointer; }
+table.res tr.main:hover td { background: var(--accent-soft); }
+table.res tr.detail td { background: var(--bg); }
+.badge { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 2px 9px; border-radius: 6px; white-space: nowrap; }
+.v-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.v-old { background: var(--bad-bg); color: var(--bad-fg); }
+.v-amb { background: var(--warn-bg); color: var(--warn-fg); }
+.v-ins { border: 1px solid var(--border); color: var(--muted); }
+.mix { display: inline-block; margin-left: 6px; font-size: 12px; color: var(--warn-fg); font-weight: 600; }
+.bar { display: inline-block; height: 8px; background: var(--accent); border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.pct { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }
+.ev h4 { margin: 10px 0 4px; font-size: 13.5px; }
+.ev .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ev .chip { font-size: 12.5px; padding: 1px 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--border); font-family: ui-monospace, Consolas, monospace; }
+.ev .chip small { color: var(--muted); font-family: system-ui, sans-serif; margin-left: 4px; }
+.note { font-size: 13px; color: var(--muted); border-left: 3px solid var(--border); padding: 4px 10px; margin: 12px 0; }
+h2 { font-size: 18px; margin: 24px 0 10px; }
+footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Display Revizyon Tespiti</h1>
+    <span><a href="index.html">← PDF karşılaştırma</a> &nbsp; <span class="privacy">🔒 Çevrimdışı — dosyalar bilgisayarınızdan çıkmaz</span></span>
+  </header>
+
+  <section class="panel" id="setup">
+    <div class="grid2">
+      <div>
+        <label class="drop" id="dropRev">
+          <div class="lbl">1) Doküman revizyonları (PDF)</div>
+          <div class="hint">Aynı dokümanın tüm revizyonlarını seçin veya sürükleyin (Rev 01, 02, 03…)</div>
+          <input type="file" id="inRev" accept="application/pdf,.pdf" multiple>
+        </label>
+        <div class="flist" id="revList"></div>
+        <div class="hint" id="revHint" style="display:none">Etiketleri kontrol edin. Liste <b>eskiden yeniye</b> sıralı olmalı (en alttaki = en güncel). Sıra etiketlere göre otomatik yapılır.</div>
+      </div>
+      <div>
+        <label class="drop" id="dropDisp">
+          <div class="lbl">2) Display dosyaları (XML)</div>
+          <div class="hint">Birden fazla dosya seçebilir ya da klasörü buraya sürükleyebilirsiniz</div>
+          <input type="file" id="inDisp" accept=".xml,text/xml,application/xml" multiple>
+        </label>
+        <div style="text-align:center;margin-top:6px"><button id="pickDir" type="button">📁 Klasör seç</button><input type="file" id="inDir" webkitdirectory multiple style="display:none"></div>
+        <div class="flist" id="dispList"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="primary" id="go" disabled>Analiz et</button>
+      <button id="clear" type="button">Temizle</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section id="results">
+    <div class="tiles" id="tiles"></div>
+    <div class="filters">
+      <select id="fVerdict"><option value="all">Tüm display'ler</option><option value="old">Güncel olmayanlar</option><option value="mix">Karışık izler içerenler</option><option value="unclear">Belirsiz / yetersiz kanıt</option></select>
+      <input type="search" id="fq" placeholder="Display adı veya tag ara…">
+      <button id="csv">⬇ CSV</button>
+      <button id="html">⬇ Rapor (HTML)</button>
+    </div>
+    <table class="res">
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <p class="note">
+      <b>Nasıl çalışır?</b> Her revizyondaki tag/parametre adları ve 3 kelimelik ifadeler (ör. operatör mesajları) çıkarılır.
+      Sadece bazı revizyonlarda geçen ifadeler "ayırt edici" kabul edilir. Her display'deki ayırt edici ifadelerin hangi revizyonla en çok örtüştüğüne bakılır.
+      Tüm revizyonlarda ortak olan ifadeler ve hiçbir dokümanda geçmeyen XML içerikleri (koordinat, renk, nesne kimliği…) hesaba katılmaz.
+      Satıra tıklayınca kanıtlar görünür. <b>"Güncellenmesi gerekebilir"</b> listesi: display'de olan ama son revizyonda artık bulunmayan ifadeler.
+    </p>
+  </section>
+  <footer>Tüm işlemler tarayıcınızın içinde yapılır; sayfa internet bağlantısı kurmaz. PDF okuma: Mozilla pdf.js (Apache 2.0).</footer>
+</div>
+<script src="lib/pdf.min.js"></script>
+<script src="lib/pdf.worker.min.js"></script>
+<script src="core.js"></script>
+<script src="tespit.js"></script>
+</body>
+</html>

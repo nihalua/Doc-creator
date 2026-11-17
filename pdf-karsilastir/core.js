@@ -696,7 +696,147 @@
     };
   }
 
-  const api = { codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
+  // ------------------------------------------------------------------
+  // 7) Display (SCADA ekranı) → revizyon tespiti
+  // ------------------------------------------------------------------
+  // Özellikler (features):
+  //  - id: kod/etiket benzeri ifadeler (6981XV01001, 6981AI01002.PV → hem tam hali hem "." öncesi),
+  //        BÜYÜK HARFLİ parametre adları (CALZEROSUC, TMANSAMP)
+  //  - ph: 3 kelimelik ifade grupları (operatör mesajları, açıklamalar)
+
+  const ID_RE = /^(?=.*\p{L})(?=.*\d)[\p{L}\p{N}_.\-/]{4,}$|^[A-Z][A-Z0-9_]{4,}$/u;
+  const WORD_RE = /[\p{L}\p{N}]+/gu;
+
+  function idVariants(tok) {
+    // orijinal yazımıyla test edilir: sıradan kelimeler (Valve, valve) tag sayılmaz; BÜYÜK HARF parametreler sayılır
+    const t = tok.replace(/[.\-_/]+$/, '');
+    const cands = [t];
+    const dot = t.indexOf('.');
+    if (dot > 3) cands.push(t.slice(0, dot)); // 6981AI01002.PV -> 6981AI01002
+    const out = [];
+    for (const c of cands) if (ID_RE.test(c)) out.push(c.toUpperCase());
+    return out;
+  }
+
+  // dil bağımsız küçük harf: I/İ/ı hepsi i (İngilizce ve Türkçe metinler aynı şekilde eşleşsin)
+  const foldCase = s => s.replace(/[İI]/g, 'i').toLowerCase().replace(/ı/g, 'i');
+
+  function phrasesOf(words, out) {
+    for (let i = 0; i + 2 < words.length; i++) {
+      // en az bir kelime harf içermeli ve tamamı tek karakter olmamalı
+      const a = words[i], b = words[i + 1], c = words[i + 2];
+      if (a.length + b.length + c.length < 8) continue;
+      out.add(a + ' ' + b + ' ' + c);
+    }
+  }
+
+  /** Revizyon dokümanından (prepareDoc çıktısı) özellik kümeleri */
+  function revFeatures(D) {
+    const ids = new Set(), ph = new Set();
+    D.tokens.forEach(t => idVariants(t.t).forEach(v => ids.add(v)));
+    // ifadeler satır bazında değil, belge akışında (satır kaymalarından etkilenmesin)
+    const words = [];
+    D.tokens.forEach(t => { if (/[\p{L}\p{N}]/u.test(t.t)) words.push(foldCase(t.t)); });
+    phrasesOf(words, ph);
+    return { ids, ph };
+  }
+
+  /** Display dosyasından çıkarılan metin parçalarından özellik kümeleri */
+  function textFeatures(strings) {
+    const ids = new Set(), ph = new Set();
+    for (const s0 of strings) {
+      const s = normalizeChars(String(s0));
+      (s.match(TOKEN_RE) || []).forEach(tok => idVariants(tok).forEach(v => ids.add(v)));
+      // "6981XV01001.PV" gibi değerler noktalı da gelebilir: ayrıca ayraçlara göre böl
+      s.split(/[\s"'<>=;,()[\]{}|\\]+/).forEach(tok => idVariants(tok).forEach(v => ids.add(v)));
+      const words = (foldCase(s).match(WORD_RE) || []);
+      if (words.length >= 3) phrasesOf(words, ph);
+    }
+    return { ids, ph };
+  }
+
+  /** XML metninden anlamlı dizgileri çıkarır (öznitelik değerleri + metin düğümleri) */
+  function xmlStrings(xmlText, DOMParserImpl) {
+    const out = [];
+    let ok = false;
+    try {
+      const P = DOMParserImpl || (typeof DOMParser !== 'undefined' ? DOMParser : null);
+      if (P) {
+        const doc = new P().parseFromString(xmlText, 'application/xml');
+        if (!doc.getElementsByTagName('parsererror').length) {
+          const walk = n => {
+            if (n.nodeType === 1) {
+              for (const a of n.attributes) if (a.value && /\p{L}/u.test(a.value)) out.push(a.value);
+              for (const c of n.childNodes) walk(c);
+            } else if ((n.nodeType === 3 || n.nodeType === 4) && n.nodeValue && /\p{L}/u.test(n.nodeValue)) {
+              out.push(n.nodeValue.trim());
+            }
+          };
+          walk(doc.documentElement);
+          ok = true;
+        }
+      }
+    } catch (e) { ok = false; }
+    if (!ok) {
+      // XML bozuksa: etiketleri at, öznitelik değerlerini ve metinleri regex ile topla
+      (xmlText.match(/"[^"]*"|'[^']*'/g) || []).forEach(v => out.push(v.slice(1, -1)));
+      xmlText.replace(/<[^>]*>/g, '\n').split('\n').forEach(v => { if (/\p{L}/u.test(v)) out.push(v.trim()); });
+    }
+    return out.map(s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'));
+  }
+
+  /**
+   * Bir display'in hangi revizyona ait olduğunu tahmin eder.
+   * @param F  textFeatures çıktısı
+   * @param revs [{label, ids:Set, ph:Set}] (eskiden yeniye sıralı)
+   */
+  function scoreDisplay(F, revs) {
+    const n = revs.length;
+    const kinds = ['ids', 'ph'];
+    const disc = []; // {f, kind, mask}
+    let common = 0, unknown = 0;
+    for (const kind of kinds) {
+      for (const f of F[kind]) {
+        let mask = 0, cnt = 0;
+        revs.forEach((r, i) => { if (r[kind].has(f)) { mask |= (1 << i); cnt++; } });
+        if (cnt === 0) { if (kind === 'ids') unknown++; continue; }
+        if (cnt === n) { common++; continue; }
+        disc.push({ f, kind, mask });
+      }
+    }
+    // tag'ler ifadelerden daha güçlü kanıt
+    const w = d => d.kind === 'ids' ? 1 : 0.5;
+    const total = disc.reduce((s, d) => s + w(d), 0);
+    const scores = revs.map((r, i) => {
+      let s = 0;
+      disc.forEach(d => { if (d.mask & (1 << i)) s += w(d); });
+      return total ? s / total : 0;
+    });
+    const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a] || b - a);
+    const best = order[0], second = order[1];
+    let verdict, confidence;
+    if (disc.length < 3 || total < 2) { verdict = 'insufficient'; confidence = 'low'; }
+    else if (n > 1 && scores[best] - scores[second] < 0.1) { verdict = 'ambiguous'; confidence = 'low'; }
+    else { verdict = 'ok'; confidence = scores[best] >= 0.9 ? 'high' : scores[best] >= 0.7 ? 'med' : 'low'; }
+
+    const labelsOf = mask => revs.filter((r, i) => mask & (1 << i)).map(r => r.label);
+    // destekleyen: en iyi revizyonda var, ikinci adayda yok
+    const support = disc.filter(d => (d.mask & (1 << best)) && !(d.mask & (1 << second)));
+    // çelişen: display'de var ama tahmin edilen revizyonda yok
+    const conflict = disc.filter(d => !(d.mask & (1 << best))).map(d => ({ f: d.f, kind: d.kind, in: labelsOf(d.mask) }));
+    // güncel olmayan: tahmin edilen revizyonda var ama son revizyonda yok (güncellenmesi gerekebilir)
+    const last = n - 1;
+    const outdated = best === last ? [] : disc.filter(d => (d.mask & (1 << best)) && !(d.mask & (1 << last)))
+      .map(d => ({ f: d.f, kind: d.kind, in: labelsOf(d.mask) }));
+    return {
+      best, second, scores, verdict, confidence,
+      nDisc: disc.length, nCommon: common, nUnknown: unknown,
+      support: support.map(d => ({ f: d.f, kind: d.kind, in: labelsOf(d.mask) })),
+      conflict, outdated
+    };
+  }
+
+  const api = { revFeatures, textFeatures, xmlStrings, scoreDisplay, codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DocCore = api;
 })(typeof window !== 'undefined' ? window : this);
