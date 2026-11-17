@@ -8,7 +8,7 @@
 
   if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
 
-  const state = { revs: [], disps: [], results: null, revData: null, open: new Set() };
+  const state = { revs: [], disps: [], dispKeys: new Set(), list: [], results: null, revData: null, open: new Set(), missing: [] };
   const revCache = new Map(); // dosya → özellikler (yeniden analizde PDF'i tekrar okumamak için)
 
   function status(msg, err) { const s = $('status'); s.textContent = msg; s.classList.toggle('err', !!err); }
@@ -28,9 +28,50 @@
   function addDisps(files) {
     files.filter(f => /\.xml$/i.test(f.name)).forEach(f => {
       const key = (f.webkitRelativePath || f.relPath || f.name) + '|' + f.size;
-      if (!state.disps.some(d => d.key === key)) state.disps.push({ file: f, key, name: f.relPath || f.webkitRelativePath || f.name });
+      if (state.dispKeys.has(key)) return;
+      state.dispKeys.add(key);
+      state.disps.push({ file: f, key, name: f.relPath || f.webkitRelativePath || f.name, short: baseKey(f.name) });
     });
     state.disps.sort((a, b) => natural(a.name, b.name));
+    renderLists();
+  }
+
+  // ------------------------------------------------------------ taranacak display listesi
+  // Dosya adı karşılaştırması: klasör yolu ve .xml uzantısı atılır, büyük/küçük harf önemsizdir.
+  function baseKey(name) {
+    return String(name).trim().replace(/^["']|["']$/g, '').split(/[\\/]/).pop().replace(/\.xml$/i, '').trim().toUpperCase();
+  }
+  function parseList(text) {
+    const seen = new Set(), out = [];
+    String(text).split(/[\r\n\t;,]+/).forEach(raw => {
+      const k = baseKey(raw);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      const wild = /[*?]/.test(k);
+      out.push({ raw: raw.trim(), key: k, re: wild ? new RegExp('^' + k.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$') : null });
+    });
+    return out;
+  }
+  const entryMatches = (e, d) => e.re ? e.re.test(d.short) : e.key === d.short;
+  // Listeye göre taranacak dosyalar + listede olup klasörde bulunamayanlar
+  function selection() {
+    if (!state.list.length) return { files: state.disps, missing: [], multi: [] };
+    const exact = new Map(), wild = state.list.filter(e => e.re);
+    state.list.forEach(e => { if (!e.re) exact.set(e.key, e); });
+    const hit = new Map();
+    const files = state.disps.filter(d => {
+      let e = exact.get(d.short);
+      if (!e) e = wild.find(w => w.re.test(d.short));
+      if (!e) return false;
+      hit.set(e.key, (hit.get(e.key) || 0) + 1);
+      return true;
+    });
+    const missing = state.list.filter(e => !hit.has(e.key)).map(e => e.raw);
+    const multi = state.list.filter(e => !e.re && hit.get(e.key) > 1).map(e => e.raw + ' (' + hit.get(e.key) + ' dosya)');
+    return { files, missing, multi };
+  }
+  function setList(text) {
+    state.list = parseList(text);
     renderLists();
   }
   function renderLists() {
@@ -51,7 +92,19 @@
     const n = state.disps.length;
     $('dispList').innerHTML = n ? '<div class="row"><span class="nm"><b>' + n + '</b> XML dosyası seçildi' +
       (n <= 8 ? ': ' + state.disps.map(d => esc(d.name)).join(', ') : ' (ör. ' + state.disps.slice(0, 3).map(d => esc(d.name)).join(', ') + ' …)') + '</span></div>' : '';
-    $('go').disabled = !(state.revs.length >= 2 && n);
+    const sel = selection();
+    let li = '';
+    if (state.list.length) {
+      li = 'Listede <b>' + state.list.length + '</b> display · klasörde eşleşen <b>' + sel.files.length + '</b> dosya taranacak';
+      if (!n) li += ' (henüz klasör seçilmedi)';
+      else if (sel.missing.length) li += ' · <span style="color:var(--bad-fg)"><b>' + sel.missing.length + '</b> tanesi bulunamadı</span>: ' +
+        esc(sel.missing.slice(0, 12).join(', ')) + (sel.missing.length > 12 ? ' …' : '');
+      if (sel.multi.length) li += '<br><span style="color:var(--warn-fg)">Birden fazla klasörde aynı adla bulunanlar: ' + esc(sel.multi.slice(0, 8).join(', ')) + (sel.multi.length > 8 ? ' …' : '') + '</span>';
+    } else if (n) {
+      li = 'Liste girilmedi: seçilen <b>tüm</b> dosyalar taranacak.';
+    }
+    $('listInfo').innerHTML = li;
+    $('go').disabled = !(state.revs.length >= 2 && sel.files.length);
   }
 
   function setupDrop(dropId, inputId, handler) {
@@ -91,7 +144,17 @@
   setupDrop('dropDisp', 'inDisp', addDisps);
   $('pickDir').addEventListener('click', () => $('inDir').click());
   $('inDir').addEventListener('change', () => { addDisps([...$('inDir').files]); $('inDir').value = ''; });
-  $('clear').addEventListener('click', () => { state.revs = []; state.disps = []; renderLists(); $('results').style.display = 'none'; status(''); });
+  let lT;
+  $('listText').addEventListener('input', () => { clearTimeout(lT); lT = setTimeout(() => setList($('listText').value), 250); });
+  $('listFile').addEventListener('change', async () => {
+    const f = $('listFile').files[0]; $('listFile').value = '';
+    if (!f) return;
+    if (/\.xlsx?$/i.test(f.name)) { status('Excel dosyası doğrudan okunamıyor: Excel\'de display adlarının bulunduğu sütunu kopyalayıp kutuya yapıştırın ya da CSV olarak kaydedin.', true); return; }
+    const text = await readXmlText(f);
+    $('listText').value = text; setList(text);
+  });
+  $('pickList').addEventListener('click', () => $('listFile').click());
+  $('clear').addEventListener('click', () => { state.revs = []; state.disps = []; state.dispKeys = new Set(); renderLists(); $('results').style.display = 'none'; status(''); });
 
   // ------------------------------------------------------------ okuma
   async function readPdf(file, label) {
@@ -145,9 +208,11 @@
       }
       // revizyonlar arası ayırt edici ifade sayısı (bilgi amaçlı)
       const results = [];
+      const sel = selection();
+      state.missing = sel.missing;
       let i = 0;
-      for (const d of state.disps) {
-        if (i % 10 === 0) { status('Display\'ler inceleniyor: ' + i + ' / ' + state.disps.length + '…'); await tick(); }
+      for (const d of sel.files) {
+        if (i % 10 === 0) { status('Display\'ler inceleniyor: ' + i + ' / ' + sel.files.length + '…'); await tick(); }
         i++;
         let res;
         try {
@@ -169,7 +234,7 @@
       state.open.clear();
       render();
       $('results').style.display = 'block';
-      status('Tamamlandı (' + ((performance.now() - t0) / 1000).toFixed(1) + ' sn). ' + results.length + ' display, ' + revs.length + ' revizyon.');
+      status('Tamamlandı (' + ((performance.now() - t0) / 1000).toFixed(1) + ' sn). ' + results.length + ' display, ' + revs.length + ' revizyon.' + (state.missing.length ? ' Listede olup bulunamayan: ' + state.missing.length + '.' : ''));
     } catch (e) {
       console.error(e);
       status('Hata: ' + (e.message || e), true);
@@ -215,7 +280,11 @@
     });
     tiles += '<div class="tile"><div class="n">' + res.filter(isMixed).length + '</div><div class="l">Karışık izler içeren</div></div>';
     tiles += '<div class="tile"><div class="n">' + (counts.unclear || 0) + '</div><div class="l">Belirsiz / yetersiz kanıt</div></div>';
+    if (state.list.length) tiles += '<div class="tile"><div class="n"' + (state.missing.length ? ' style="color:var(--bad-fg)"' : '') + '>' + state.missing.length + '</div><div class="l">Listede olup klasörde bulunamayan</div></div>';
     $('tiles').innerHTML = tiles;
+    $('missing').innerHTML = state.missing.length ? '<div class="panel" style="margin-bottom:14px"><b style="color:var(--bad-fg)">Listede olup klasörde bulunamayan display\'ler (' + state.missing.length + ')</b>' +
+      '<div class="muted" style="margin:4px 0 6px">Ad farklı yazılmış, dosya başka klasörde ya da hiç oluşturulmamış olabilir.</div><div class="ev"><div class="chips">' +
+      state.missing.map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div></div></div>' : '';
     $('thead').innerHTML = '<tr><th>Display</th><th>Tahmin</th>' + revs.map(r => '<th>' + esc(r.label) + '</th>').join('') + '<th title="Bu display\'de bulunan ve sadece bazı revizyonlarda geçen ifade sayısı">Ayırt edici</th><th>Son değişiklik</th></tr>';
     renderRows();
   }
@@ -305,6 +374,7 @@
         .concat(revs.map((x, i) => r.error ? '' : Math.round(100 * r.scores[i])),
           [r.error ? '' : r.nDisc, fmtDate(r.lastChange), r.dateNote ? r.dateNote.text : '', list(r.support), list(r.conflict), list(r.outdated)]).map(csvCell).join(';'));
     });
+    state.missing.forEach(m => lines.push([m, 'Klasörde bulunamadı'].map(csvCell).join(';')));
     download('﻿' + lines.join('\r\n'), 'display-revizyon.csv', 'text/csv;charset=utf-8');
   });
 
@@ -312,7 +382,7 @@
     const revs = state.revData;
     let body = '<div class="wrap"><header class="top"><h1>Display Revizyon Tespiti — Rapor</h1><span class="muted">' + esc(new Date().toLocaleString('tr-TR')) + '</span></header>';
     body += '<p class="muted">Revizyonlar (eskiden yeniye): ' + revs.map(r => esc(r.label) + ' (' + esc(r.file) + (r.date ? ', ' + fmtDate(r.date) : '') + ')').join(' → ') + '</p>';
-    body += '<div class="tiles">' + $('tiles').innerHTML + '</div>';
+    body += '<div class="tiles">' + $('tiles').innerHTML + '</div>' + $('missing').innerHTML;
     body += '<table class="res"><thead>' + $('thead').innerHTML + '</thead><tbody>';
     state.results.forEach(r => {
       const c = classify(r);

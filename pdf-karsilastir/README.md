@@ -58,7 +58,13 @@ SCADA ekranlarının (ör. Yokogawa CI Server display XML dosyaları) dokümanı
 ## Kullanım
 1. Dokümanın **tüm revizyonlarını** (PDF) yükleyin. Etiketler dosya adından tahmin edilir (`..._Rev02.pdf` → "Rev 02"). Gerekirse düzeltin. Liste eskiden yeniye sıralanır; en alttaki revizyon "güncel" kabul edilir.
 2. Display XML dosyalarını seçin. Klasör de seçebilir veya sürükleyebilirsiniz; alt klasörler de okunur.
-3. **Analiz et**'e basın.
+3. *(İsteğe bağlı)* **Taranacak display listesi**: Klasörde ilgisiz binlerce display varsa, sadece taranması gerekenlerin adlarını kutuya yapıştırın ya da .txt/.csv dosyası olarak yükleyin.
+   - Her satıra bir ad yazın; Excel'den bir sütunu kopyalayıp yapıştırmak da olur.
+   - Klasör yolu ve `.xml` uzantısı gerekmez, büyük/küçük harf önemsizdir.
+   - `*` joker karakteri kullanılabilir (ör. `ANA_SEQ_*`).
+   - Program sadece eşleşen dosyaları tarar. **Listede olup klasörde bulunamayan** display'leri ayrıca raporlar; bunlar CSV'de "Klasörde bulunamadı" satırı olarak da yer alır.
+   - Aynı adla birden fazla klasörde bulunan dosyalar varsa uyarı verir.
+4. **Analiz et**'e basın.
 
 ## Nasıl çalışır?
 - Her revizyondan tag / parametre adları (6981XV01001, CALZEROSUC…) ve 3 kelimelik ifadeler (operatör mesajları gibi) çıkarılır.

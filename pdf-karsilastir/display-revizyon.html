@@ -107,6 +107,13 @@ footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: c
         </label>
         <div style="text-align:center;margin-top:6px"><button id="pickDir" type="button">📁 Klasör seç</button><input type="file" id="inDir" webkitdirectory multiple style="display:none"></div>
         <div class="flist" id="dispList"></div>
+        <div style="margin-top:14px">
+          <div class="lbl" style="font-weight:650">3) Taranacak display listesi <span class="muted">(isteğe bağlı)</span></div>
+          <div class="hint">Klasörde ilgisiz binlerce display varsa, sadece taranması gerekenlerin adlarını yapıştırın (her satıra bir ad; Excel'den sütun kopyalamak da olur). Klasör yolu ve .xml uzantısı gerekmez, büyük/küçük harf önemsizdir. <code>*</code> joker karakteri kullanılabilir (ör. <code>ANA_SEQ_*</code>).</div>
+          <textarea id="listText" rows="5" style="width:100%;margin-top:6px;font:13px/1.4 ui-monospace,Consolas,monospace;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text)" placeholder="ANA_SEQ_01&#10;ANA_SEQ_02&#10;ANA_CAL_*"></textarea>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:4px"><button id="pickList" type="button">Liste dosyası yükle (.txt / .csv)</button><input type="file" id="listFile" accept=".txt,.csv,.lst,.xlsx,.xls,text/plain,text/csv" style="display:none"></div>
+          <div class="flist" id="listInfo"></div>
+        </div>
       </div>
     </div>
     <div class="controls">
@@ -118,6 +125,7 @@ footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: c
 
   <section id="results">
     <div class="tiles" id="tiles"></div>
+    <div id="missing"></div>
     <div class="filters">
       <select id="fVerdict"><option value="all">Tüm display'ler</option><option value="old">Güncel olmayanlar</option><option value="mix">Karışık izler içerenler</option><option value="unclear">Belirsiz / yetersiz kanıt</option></select>
       <input type="search" id="fq" placeholder="Display adı veya tag ara…">
