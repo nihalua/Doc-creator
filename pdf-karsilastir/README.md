@@ -56,7 +56,7 @@ Aynı dokümanın iki revizyonunu (ör. Rev A ve Rev B) karşılaştırıp arada
 SCADA ekranlarının (ör. Yokogawa CI Server display XML dosyaları) dokümanın **hangi revizyonuna göre** yapıldığını tahmin eder. Ana sayfadaki "Display revizyon tespiti →" bağlantısıyla ya da `display-revizyon.html` dosyasına çift tıklayarak açılır.
 
 ## Kullanım
-1. Dokümanın **tüm revizyonlarını** (PDF) yükleyin. Etiketler dosya adından tahmin edilir (`..._Rev02.pdf` → "Rev 02"). Gerekirse düzeltin. Liste eskiden yeniye sıralanır; en alttaki revizyon "güncel" kabul edilir.
+1. Dokümanın **tüm revizyonlarını** (PDF) yükleyin. Etiketler dosya adından tahmin edilir (`..._Rev02.pdf`, `rev05`, `R6.0`, `..._06.pdf`). Liste eskiden yeniye sıralanır ve **en alttaki revizyon "güncel" kabul edilir**. Sırayı mutlaka kontrol edin, gerekirse ↑↓ ile düzeltin.
 2. Display XML dosyalarını seçin. Klasör de seçebilir veya sürükleyebilirsiniz; alt klasörler de okunur.
 3. *(İsteğe bağlı)* **Taranacak display listesi**: Klasörde ilgisiz binlerce display varsa, sadece taranması gerekenlerin adlarını kutuya yapıştırın ya da .txt/.csv dosyası olarak yükleyin.
    - Her satıra bir ad yazın; Excel'den bir sütunu kopyalayıp yapıştırmak da olur.
@@ -89,12 +89,27 @@ Revizyonların yayın tarihlerini girerseniz (gg.aa.yyyy), display XML'lerindeki
 | **Belirsiz** | İki revizyon arasında ayırt edilemedi |
 | **Yetersiz kanıt** | Display'de sadece tüm revizyonlarda ortak olan ifadeler var |
 
+**Değişmeyen içerik**: Display'deki ifadeler dokümanda bol miktarda geçiyor ama hiçbiri revizyonlar arasında değişmemiş. Display, revizyonlar arasında değişmeyen bir bölümü gösteriyor ve tüm revizyonlarla uyumlu.
+
+**Muhtemelen Rev X (zayıf kanıt)**: Az sayıda (1–2) ayırt edici ifade var ve hepsi aynı revizyonu gösteriyor.
+
 Satıra tıklayınca kanıtlar görünür:
 - **Lehine kanıt:** Tahmin edilen revizyona özgü ifadeler.
 - **Çelişen ifadeler:** Başka revizyonlara ait ifadeler.
 - **Güncellenmesi gerekebilir:** Display'de olan ama son revizyonda artık bulunmayan ifadeler.
 
 Sonuçlar CSV (Excel) veya HTML rapor olarak indirilebilir.
+
+## Değişiklik bazlı kontrol
+Sonuç tablosunun altında, son iki revizyon arasındaki **her değişiklik için** ayrı bir kontrol tablosu bulunur:
+| Durum | Anlamı |
+|---|---|
+| ✔ Uygulanmış | Değişikliğin yeni hali display'lerde var, eski hali hiçbirinde yok |
+| ✖ Eski hali duruyor | Değişiklik display'lere yansımamış |
+| ◐ Karışık | Bazı display'lerde yeni, bazılarında eski hali var |
+| — Display'lerde yok | Değişiklik taranan display'lerde hiç geçmiyor: ya o konu bu display'lerde gösterilmiyor, ya da yeni eklenen öğe display'e hiç eklenmemiş |
+
+Her değişiklik için hangi display'lerde eski ve yeni halin bulunduğu listelenir; tablo CSV olarak indirilebilir.
 
 ## Sınırlamalar
 - Sadece metin karşılaştırılır. Renk, yerleşim ve sembol gibi görsel farklar tespit edilemez.

@@ -844,7 +844,13 @@
     const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a] || b - a);
     const best = order[0], second = order[1];
     let verdict, confidence;
-    if (disc.length < 3 || total < 2) { verdict = 'insufficient'; confidence = 'low'; }
+    if (disc.length === 0) {
+      // Ayırt edici ifade yok ama dokümanla çok ortak ifade var: display revizyonlar arasında DEĞİŞMEYEN bir bölümü gösteriyor
+      verdict = common >= 5 ? 'same' : 'insufficient'; confidence = 'low';
+    } else if (disc.length < 3 || total < 2) {
+      // az ama tek yönlü kanıt (karşı revizyona hiç işaret yok) -> zayıf tahmin
+      verdict = (n > 1 && scores[best] === 1 && scores[second] === 0) ? 'weak' : 'insufficient'; confidence = 'low';
+    }
     else if (n > 1 && scores[best] - scores[second] < 0.1) { verdict = 'ambiguous'; confidence = 'low'; }
     else { verdict = 'ok'; confidence = scores[best] >= 0.9 ? 'high' : scores[best] >= 0.7 ? 'med' : 'low'; }
 
@@ -865,7 +871,46 @@
     };
   }
 
-  const api = { parseDate, xmlDates, revFeatures, textFeatures, xmlStrings, scoreDisplay, codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
+  /**
+   * Değişiklik bazlı kontrol: iki revizyon arasındaki her değişikliğin display'lerde eski mi yeni mi haliyle bulunduğuna bakar.
+   * @param Dp, Dl  önceki ve son revizyonun prepareDoc çıktısı
+   * @param Vp, Vl  aynı revizyonların revFeatures çıktısı
+   * @param displays [{name, F}] (F = textFeatures çıktısı)
+   */
+  function changeCheck(Dp, Dl, Vp, Vl, displays) {
+    const cmp = compareDocs(Dp, Dl, {});
+    const words = s => (s || '').split(/\s+/).filter(Boolean);
+    const items = [];
+    let unchecked = 0;
+    for (const c of cmp.changes) {
+      if (c.cosmetic) continue;
+      // değişikliğin çevresinden 2'şer kelime: tek sayı değişikliklerinde de ("60 -> 90 seconds") ifade oluşabilsin
+      const pre = words(c.before).slice(-2).join(' '), post = words(c.after).slice(0, 2).join(' ');
+      const oF = textFeatures([pre + ' ' + c.oldText + ' ' + post]);
+      const nF = textFeatures([pre + ' ' + c.newText + ' ' + post]);
+      // yalnızca gerçekten kalkmış (son revizyonda hiç geçmeyen) / gerçekten yeni (önceki revizyonda hiç geçmeyen) ifadeler
+      const oldK = [], newK = [];
+      oF.ids.forEach(f => { if (!nF.ids.has(f) && !Vl.ids.has(f)) oldK.push({ f, kind: 'ids' }); });
+      oF.ph.forEach(f => { if (!nF.ph.has(f) && !Vl.ph.has(f)) oldK.push({ f, kind: 'ph' }); });
+      nF.ids.forEach(f => { if (!oF.ids.has(f) && !Vp.ids.has(f)) newK.push({ f, kind: 'ids' }); });
+      nF.ph.forEach(f => { if (!oF.ph.has(f) && !Vp.ph.has(f)) newK.push({ f, kind: 'ph' }); });
+      if (!oldK.length && !newK.length) { unchecked++; continue; }
+      const hasOld = [], hasNew = [];
+      for (const d of displays) {
+        if (!d.F) continue;
+        const o = oldK.filter(k => d.F[k.kind].has(k.f)).map(k => k.f);
+        const nn = newK.filter(k => d.F[k.kind].has(k.f)).map(k => k.f);
+        if (o.length) hasOld.push({ name: d.name, keys: o });
+        if (nn.length) hasNew.push({ name: d.name, keys: nn });
+      }
+      const status = hasOld.length && hasNew.length ? 'mixed' : hasOld.length ? 'old' : hasNew.length ? 'applied' : 'none';
+      items.push({ id: c.id, type: c.type, pageA: c.pageA, pageB: c.pageB, section: c.section, oldText: c.oldText, newText: c.newText,
+        level: c.level, reasons: c.reasons, oldK, newK, hasOld, hasNew, status });
+    }
+    return { items, total: cmp.changes.filter(c => !c.cosmetic).length, unchecked };
+  }
+
+  const api = { changeCheck, parseDate, xmlDates, revFeatures, textFeatures, xmlStrings, scoreDisplay, codes, buildLines, markBoilerplate, prepareDoc, diffSeq, compareDocs, summarizeDoc, scoreChange, numbers, reqTerms };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DocCore = api;
 })(typeof window !== 'undefined' ? window : this);

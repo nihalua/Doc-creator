@@ -69,6 +69,11 @@ table.res tr.detail td { background: var(--bg); }
 .v-old { background: var(--bad-bg); color: var(--bad-fg); }
 .v-amb { background: var(--warn-bg); color: var(--warn-fg); }
 .v-ins { border: 1px solid var(--border); color: var(--muted); }
+.v-same { background: var(--accent-soft); color: var(--accent); }
+del { background: var(--bad-bg); color: var(--bad-fg); text-decoration: line-through; border-radius: 3px; padding: 0 2px; }
+ins { background: var(--ok-bg); color: var(--ok-fg); text-decoration: none; border-radius: 3px; padding: 0 2px; }
+.cc-x { white-space: pre-wrap; word-wrap: break-word; }
+.flist .row button[disabled] { opacity: .3; }
 .mix { display: inline-block; margin-left: 6px; font-size: 12px; color: var(--warn-fg); font-weight: 600; }
 .bar { display: inline-block; height: 8px; background: var(--accent); border-radius: 4px; vertical-align: middle; margin-right: 6px; }
 .pct { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }
@@ -97,7 +102,7 @@ footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: c
           <input type="file" id="inRev" accept="application/pdf,.pdf" multiple>
         </label>
         <div class="flist" id="revList"></div>
-        <div class="hint" id="revHint" style="display:none">Etiketleri kontrol edin. Liste <b>eskiden yeniye</b> sıralı olmalı (en alttaki = en güncel). Sıra etiketlere göre otomatik yapılır. <b>Yayın tarihi</b> isteğe bağlıdır; girilirse display'lerin değişiklik geçmişi tarihleriyle karşılaştırılır.</div>
+        <div class="hint" id="revHint" style="display:none">Etiketleri ve <b>sırayı</b> kontrol edin: liste <b>eskiden yeniye</b> olmalı, <b>en alttaki = en güncel</b> kabul edilir. Gerekirse ↑↓ ile düzeltin. <b>Yayın tarihi</b> isteğe bağlıdır; girilirse display'lerin değişiklik geçmişi tarihleriyle karşılaştırılır.</div>
       </div>
       <div>
         <label class="drop" id="dropDisp">
@@ -127,7 +132,7 @@ footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: c
     <div class="tiles" id="tiles"></div>
     <div id="missing"></div>
     <div class="filters">
-      <select id="fVerdict"><option value="all">Tüm display'ler</option><option value="old">Güncel olmayanlar</option><option value="mix">Karışık izler içerenler</option><option value="unclear">Belirsiz / yetersiz kanıt</option></select>
+      <select id="fVerdict"><option value="all">Tüm display'ler</option><option value="old">Güncel olmayanlar</option><option value="mix">Karışık izler içerenler</option><option value="same">Değişmeyen içerik</option><option value="unclear">Belirsiz / yetersiz kanıt</option></select>
       <input type="search" id="fq" placeholder="Display adı veya tag ara…">
       <button id="csv">⬇ CSV</button>
       <button id="html">⬇ Rapor (HTML)</button>
@@ -136,6 +141,7 @@ footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: c
       <thead id="thead"></thead>
       <tbody id="tbody"></tbody>
     </table>
+    <div id="cc"></div>
     <p class="note">
       <b>Nasıl çalışır?</b> Her revizyondaki tag/parametre adları ve 3 kelimelik ifadeler (ör. operatör mesajları) çıkarılır.
       Sadece bazı revizyonlarda geçen ifadeler "ayırt edici" kabul edilir. Her display'deki ayırt edici ifadelerin hangi revizyonla en çok örtüştüğüne bakılır.

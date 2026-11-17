@@ -15,8 +15,12 @@
 
   // ------------------------------------------------------------ dosya listeleri
   function guessLabel(name) {
-    const m = name.match(/rev(?:ision|izyon)?[\s._-]*([A-Z]?\d{1,3}[A-Z]?|[A-Z])(?![a-z])/i);
-    return m ? 'Rev ' + m[1].toUpperCase() : name.replace(/\.pdf$/i, '');
+    const base = name.replace(/\.pdf$/i, '');
+    let m = base.match(/rev(?:ision|izyon)?[\s._-]*(\d{1,3}(?:\.\d+)?[A-Z]?|[A-Z]\d{0,2})(?![a-z0-9])/i)
+      || base.match(/(?:^|[^a-z0-9])R(\d{1,3}(?:\.\d+)?)(?![a-z0-9])/i);
+    if (m) return 'Rev ' + m[1].toUpperCase();
+    m = base.match(/[_-](\d{2})(?:[\s_-]|$)/);  // belge no sonundaki revizyon: ...-0001_06
+    return m ? 'Rev ' + m[1] : base;
   }
   function addRevs(files) {
     files.filter(f => /\.pdf$/i.test(f.name)).forEach(f => {
@@ -78,16 +82,19 @@
     $('revList').innerHTML = state.revs.map((r, i) =>
       '<div class="row"><span class="muted">' + (i + 1) + '.</span><input type="text" data-i="' + i + '" value="' + esc(r.label) + '" title="Revizyon etiketi">' +
       '<input type="text" class="dt" data-d="' + i + '" value="' + esc(r.date || '') + '" placeholder="yayın tarihi" title="İsteğe bağlı: revizyonun yayın tarihi (gg.aa.yyyy). Display değişiklik tarihleriyle karşılaştırmak için.">' +
-      '<span class="nm">' + esc(r.file.name) + '</span><button data-del="' + i + '" title="Listeden çıkar">✕</button></div>').join('');
+      '<span class="nm">' + esc(r.file.name) + '</span><button data-up="' + i + '" title="Yukarı (daha eski)"' + (i ? '' : ' disabled') + '>↑</button><button data-dn="' + i + '" title="Aşağı (daha yeni)"' + (i < state.revs.length - 1 ? '' : ' disabled') + '>↓</button><button data-del="' + i + '" title="Listeden çıkar">✕</button></div>').join('');
     $('revHint').style.display = state.revs.length ? 'block' : 'none';
     $('revList').querySelectorAll('input[type=text]:not(.dt)').forEach(inp => inp.addEventListener('change', () => {
-      state.revs[+inp.dataset.i].label = inp.value.trim() || state.revs[+inp.dataset.i].label; sortRevs(); renderLists();
+      state.revs[+inp.dataset.i].label = inp.value.trim() || state.revs[+inp.dataset.i].label; renderLists();
     }));
     $('revList').querySelectorAll('input.dt').forEach(inp => inp.addEventListener('change', () => {
       const v = inp.value.trim();
       if (v && !DocCore.parseDate(v)) { inp.style.borderColor = 'var(--bad-fg)'; return; }
       inp.style.borderColor = ''; state.revs[+inp.dataset.d].date = v;
     }));
+    const swap = (a, b) => { const t = state.revs[a]; state.revs[a] = state.revs[b]; state.revs[b] = t; renderLists(); };
+    $('revList').querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => swap(+b.dataset.up, +b.dataset.up - 1)));
+    $('revList').querySelectorAll('[data-dn]').forEach(b => b.addEventListener('click', () => swap(+b.dataset.dn, +b.dataset.dn + 1)));
     $('revList').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { state.revs.splice(+b.dataset.del, 1); renderLists(); }));
     const n = state.disps.length;
     $('dispList').innerHTML = n ? '<div class="row"><span class="nm"><b>' + n + '</b> XML dosyası seçildi' +
@@ -202,9 +209,10 @@
           if (D.tokens.length < 50) throw new Error(r.file.name + ' içinde okunabilir metin bulunamadı (taranmış PDF olabilir).');
           feat = DocCore.revFeatures(D);
           feat.pages = D.pages;
+          feat.D = D;
           revCache.set(key, feat);
         }
-        revs.push({ label: r.label, ids: feat.ids, ph: feat.ph, pages: feat.pages, file: r.file.name, date: r.date ? DocCore.parseDate(r.date) : null });
+        revs.push({ label: r.label, ids: feat.ids, ph: feat.ph, pages: feat.pages, file: r.file.name, date: r.date ? DocCore.parseDate(r.date) : null, D: feat.D });
       }
       // revizyonlar arası ayırt edici ifade sayısı (bilgi amaçlı)
       const results = [];
@@ -219,6 +227,7 @@
           const text = await readXmlText(d.file);
           const F = DocCore.textFeatures(DocCore.xmlStrings(text));
           res = DocCore.scoreDisplay(F, revs);
+          res.F = F;
           const hist = DocCore.xmlDates(text);
           res.history = hist;
           res.lastChange = hist.length ? hist[hist.length - 1].date : null;
@@ -231,6 +240,9 @@
       }
       state.results = results;
       state.revData = revs;
+      status('Değişiklik bazlı kontrol yapılıyor…'); await tick();
+      const L = revs.length - 1;
+      state.cc = DocCore.changeCheck(revs[L - 1].D, revs[L].D, revs[L - 1], revs[L], results.filter(r => r.F).map(r => ({ name: r.name, F: r.F })));
       state.open.clear();
       render();
       $('results').style.display = 'block';
@@ -263,6 +275,8 @@
     const revs = state.revData, last = revs.length - 1;
     if (r.error) return { cls: 'v-ins', text: 'Okunamadı', key: 'unclear' };
     if (r.verdict === 'insufficient') return { cls: 'v-ins', text: 'Yetersiz kanıt', key: 'unclear' };
+    if (r.verdict === 'same') return { cls: 'v-same', text: 'Değişmeyen içerik', key: 'same', tip: 'Display\'deki ifadeler revizyonlar arasında değişmemiş: tüm revizyonlarla uyumlu' };
+    if (r.verdict === 'weak') return { cls: r.best === last ? 'v-ok' : 'v-old', text: 'Muhtemelen ' + revs[r.best].label + ' (zayıf kanıt)', key: r.best === last ? 'cur' : 'old', weak: true };
     if (r.verdict === 'ambiguous') return { cls: 'v-amb', text: 'Belirsiz: ' + revs[r.best].label + ' / ' + revs[r.second].label, key: 'unclear' };
     if (r.best === last) return { cls: 'v-ok', text: revs[r.best].label + ' (güncel)', key: 'cur' };
     return { cls: 'v-old', text: revs[r.best].label, key: 'old' };
@@ -273,12 +287,13 @@
   function render() {
     const revs = state.revData, res = state.results;
     const counts = {};
-    res.forEach(r => { const c = classify(r); const k = c.key === 'unclear' ? 'unclear' : revs[r.best].label; counts[k] = (counts[k] || 0) + 1; });
+    res.forEach(r => { const c = classify(r); const k = (c.key === 'unclear' || c.key === 'same') ? c.key : revs[r.best].label; counts[k] = (counts[k] || 0) + 1; });
     let tiles = '<div class="tile"><div class="n">' + res.length + '</div><div class="l">Display</div></div>';
     revs.forEach((rv, i) => {
       tiles += '<div class="tile"><div class="n">' + (counts[rv.label] || 0) + '</div><div class="l">' + esc(rv.label) + (i === revs.length - 1 ? ' (güncel)' : '') + ' ile uyumlu</div></div>';
     });
     tiles += '<div class="tile"><div class="n">' + res.filter(isMixed).length + '</div><div class="l">Karışık izler içeren</div></div>';
+    tiles += '<div class="tile" title="Revizyonlar arasında değişmeyen bölümleri gösteren display\'ler: tüm revizyonlarla uyumlu"><div class="n">' + (counts.same || 0) + '</div><div class="l">Değişmeyen içerik (tüm revizyonlarla uyumlu)</div></div>';
     tiles += '<div class="tile"><div class="n">' + (counts.unclear || 0) + '</div><div class="l">Belirsiz / yetersiz kanıt</div></div>';
     if (state.list.length) tiles += '<div class="tile"><div class="n"' + (state.missing.length ? ' style="color:var(--bad-fg)"' : '') + '>' + state.missing.length + '</div><div class="l">Listede olup klasörde bulunamayan</div></div>';
     $('tiles').innerHTML = tiles;
@@ -287,6 +302,57 @@
       state.missing.map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div></div></div>' : '';
     $('thead').innerHTML = '<tr><th>Display</th><th>Tahmin</th>' + revs.map(r => '<th>' + esc(r.label) + '</th>').join('') + '<th title="Bu display\'de bulunan ve sadece bazı revizyonlarda geçen ifade sayısı">Ayırt edici</th><th>Son değişiklik</th></tr>';
     renderRows();
+    renderCC();
+  }
+
+  // ------------------------------------------------------------ değişiklik bazlı kontrol
+  const CC_LBL = { applied: ['v-ok', '✔ Uygulanmış'], old: ['v-old', '✖ Eski hali duruyor'], mixed: ['v-amb', '◐ Karışık'], none: ['v-ins', '— Display\'lerde yok'] };
+  function ccExcerpt(it, max) {
+    const cut = s => s.length > max ? s.slice(0, max) + '…' : s;
+    return (it.oldText ? '<del>' + esc(cut(it.oldText)) + '</del> ' : '') + (it.oldText && it.newText ? '→ ' : '') + (it.newText ? '<ins>' + esc(cut(it.newText)) + '</ins>' : '');
+  }
+  const dispNames = arr => arr.map(d => '<span class="chip" title="' + esc(d.keys.join(', ')) + '">' + esc(d.name.split('/').pop()) + '</span>');
+  function ccRowsHtml(items, all) {
+    return items.map(it => {
+      const [cls, txt] = CC_LBL[it.status];
+      return '<tr><td class="n">' + it.id + '</td><td class="n">' + (it.pageA != null ? it.pageA : '—') + ' → ' + (it.pageB != null ? it.pageB : '—') + '</td>' +
+        '<td>' + (it.section ? '<div class="muted">§ ' + esc(it.section) + '</div>' : '') + '<div class="cc-x">' + ccExcerpt(it, all ? 600 : 220) + '</div></td>' +
+        '<td><span class="badge ' + cls + '">' + txt + '</span></td>' +
+        '<td class="ev">' + (it.hasNew.length ? '<div class="chips">' + dispNames(it.hasNew).join('') + '</div>' : '<span class="muted">—</span>') + '</td>' +
+        '<td class="ev">' + (it.hasOld.length ? '<div class="chips">' + dispNames(it.hasOld).join('') + '</div>' : '<span class="muted">—</span>') + '</td></tr>';
+    }).join('');
+  }
+  function renderCC() {
+    const cc = state.cc, revs = state.revData, L = revs.length - 1;
+    if (!cc) { $('cc').innerHTML = ''; return; }
+    const cnt = k => cc.items.filter(i => i.status === k).length;
+    let h = '<h2>Değişiklik bazlı kontrol: ' + esc(revs[L - 1].label) + ' → ' + esc(revs[L].label) + '</h2>' +
+      '<p class="muted" style="margin-top:0">İki revizyon arasındaki her değişiklik için: yeni hali hangi display\'lerde var (✔), eski hali hâlâ hangi display\'lerde duruyor (✖)? ' +
+      'Toplam ' + cc.total + ' içerik değişikliğinden ' + cc.items.length + ' tanesi kontrol edilebildi (diğerleri display\'lerde aranabilecek ayırt edici bir ifade içermiyor).</p>' +
+      '<div class="tiles">' +
+      '<div class="tile"><div class="n" style="color:var(--ok-fg)">' + cnt('applied') + '</div><div class="l">Uygulanmış (yeni hali display\'de)</div></div>' +
+      '<div class="tile"><div class="n" style="color:var(--bad-fg)">' + cnt('old') + '</div><div class="l">Eski hali duruyor</div></div>' +
+      '<div class="tile"><div class="n" style="color:var(--warn-fg)">' + cnt('mixed') + '</div><div class="l">Karışık (bazı display\'lerde eski)</div></div>' +
+      '<div class="tile"><div class="n">' + cnt('none') + '</div><div class="l">Taranan display\'lerde geçmiyor</div></div></div>' +
+      '<div class="filters"><select id="ccF"><option value="hit">Display\'lerde geçenler</option><option value="problem">Sorunlu olanlar (eski / karışık)</option><option value="none">Display\'lerde geçmeyenler</option><option value="all">Tümü</option></select>' +
+      '<button id="ccCsv">⬇ CSV</button></div>' +
+      '<table class="res"><thead><tr><th>#</th><th>Sayfa</th><th>Değişiklik (eski → yeni)</th><th>Durum</th><th>Yeni hali olan display\'ler</th><th>Eski hali olan display\'ler</th></tr></thead><tbody id="ccBody"></tbody></table>' +
+      '<p class="note"><b>Display\'lerde geçmeyen</b> bir değişiklik iki anlama gelebilir: o konu bu display\'lerde gösterilmiyor (normal) ya da yeni eklenen bir öğe display\'e hiç eklenmemiş. Özellikle yeni eklenen adımlar, parametreler ve mesajlar için bu listeye göz atın.</p>';
+    $('cc').innerHTML = h;
+    const draw = () => {
+      const f = $('ccF').value;
+      const items = cc.items.filter(i => f === 'all' || (f === 'hit' && i.status !== 'none') || (f === 'problem' && (i.status === 'old' || i.status === 'mixed')) || (f === 'none' && i.status === 'none'));
+      $('ccBody').innerHTML = items.length ? ccRowsHtml(items) : '<tr><td colspan="6" class="muted">Bu filtreye uyan değişiklik yok.</td></tr>';
+    };
+    $('ccF').addEventListener('change', draw);
+    $('ccCsv').addEventListener('click', () => {
+      const head = ['#', 'Sayfa (önceki)', 'Sayfa (son)', 'Bölüm', 'Eski metin', 'Yeni metin', 'Durum', 'Yeni hali olan display\'ler', 'Eski hali olan display\'ler'];
+      const lines = [head.map(csvCell).join(';')];
+      cc.items.forEach(i => lines.push([i.id, i.pageA, i.pageB, i.section, i.oldText, i.newText, CC_LBL[i.status][1].replace(/^\S+\s/, ''),
+        i.hasNew.map(d => d.name).join(', '), i.hasOld.map(d => d.name).join(', ')].map(csvCell).join(';')));
+      download('\ufeff' + lines.join('\r\n'), 'degisiklik-kontrolu.csv', 'text/csv;charset=utf-8');
+    });
+    draw();
   }
 
   function renderRows() {
@@ -297,6 +363,7 @@
       if (fv === 'old' && c.key !== 'old') return false;
       if (fv === 'mix' && !isMixed(r)) return false;
       if (fv === 'unclear' && c.key !== 'unclear') return false;
+      if (fv === 'same' && c.key !== 'same') return false;
       if (q && !r.name.toUpperCase().includes(q) && !(r.support || []).concat(r.conflict || [], r.outdated || []).some(e => e.f.toUpperCase().includes(q))) return false;
       return true;
     });
@@ -304,7 +371,7 @@
     rows.forEach(r => {
       const c = classify(r);
       const idx = state.results.indexOf(r);
-      h += '<tr class="main" data-i="' + idx + '"><td>' + esc(r.name) + '</td><td><span class="badge ' + c.cls + '">' + esc(c.text) + '</span>' +
+      h += '<tr class="main" data-i="' + idx + '"><td>' + esc(r.name) + '</td><td><span class="badge ' + c.cls + '"' + (c.tip ? ' title="' + esc(c.tip) + '"' : '') + '>' + esc(c.text) + '</span>' +
         (isMixed(r) ? '<span class="mix" title="Başka revizyonlara ait ifadeler de var">⚠ karışık</span>' : '') +
         (!r.error && r.verdict === 'ok' ? '<div class="muted">güven: ' + CONF[r.confidence] + '</div>' : '') + '</td>';
       revs.forEach((rv, i) => {
@@ -344,7 +411,9 @@
     if (r.support.length) h += '<h4>✔ ' + esc(revs[r.best].label) + ' lehine kanıt (' + esc(revs[r.second].label) + ' revizyonunda olmayan ifadeler)</h4>' + chips(r.support.map(e => ({ f: e.f, kind: e.kind, in: e.in })));
     if (r.conflict.length) h += '<h4>⚠ Çelişen ifadeler: ' + esc(revs[r.best].label) + ' revizyonunda yok, başka revizyonlarda var</h4>' + chips(r.conflict);
     if (r.outdated.length) h += '<h4>⟳ Güncellenmesi gerekebilir: son revizyonda (' + esc(revs[revs.length - 1].label) + ') artık bulunmayan ifadeler</h4>' + chips(r.outdated);
-    if (!r.support.length && !r.conflict.length && !r.outdated.length) h += '<p class="muted">Ayırt edici kanıt yok: display\'deki tag ve metinler revizyonlar arasında değişmemiş ya da dokümanda hiç geçmiyor.</p>';
+    if (!r.support.length && !r.conflict.length && !r.outdated.length) h += r.verdict === 'same'
+      ? '<p class="muted">Display\'deki ' + r.nCommon + ' ifade tüm revizyonlarda aynen geçiyor; revizyonlar arasında bu display\'i etkileyen bir değişiklik bulunamadı. Bu display tüm revizyonlarla uyumludur.</p>'
+      : '<p class="muted">Ayırt edici kanıt yok: display\'deki tag ve metinler revizyonlar arasında değişmemiş ya da dokümanda hiç geçmiyor.</p>';
     if (r.history && r.history.length) h += '<h4>🕒 Display değişiklik geçmişi</h4><div class="muted">' +
       r.history.slice(-10).map(x => esc(fmtDate(x.date)) + (x.what ? ' — ' + esc(x.what) : '') + (x.who ? ' (' + esc(x.who) + ')' : '')).join('<br>') + '</div>';
     return h + '</div>';
@@ -391,7 +460,14 @@
         '<td class="n">' + (r.error ? '—' : r.nDisc) + '</td><td>' + dateCell(r) + '</td></tr>';
       if (c.key !== 'cur' || isMixed(r)) body += '<tr class="detail"><td colspan="' + (revs.length + 4) + '">' + evidenceHtml(r) + '</td></tr>';
     });
-    body += '</tbody></table>' + document.querySelector('#results .note').outerHTML + '</div>';
+    body += '</tbody></table>' + document.querySelector('#results .note').outerHTML;
+    if (state.cc) {
+      const L = revs.length - 1;
+      const prob = state.cc.items.filter(i => i.status !== 'none');
+      body += '<h2>Değişiklik bazlı kontrol: ' + esc(revs[L - 1].label) + ' → ' + esc(revs[L].label) + '</h2><p class="muted">Display\'lerde geçen ' + prob.length + ' değişiklik (toplam kontrol edilebilen: ' + state.cc.items.length + ').</p>' +
+        '<table class="res"><thead><tr><th>#</th><th>Sayfa</th><th>Değişiklik (eski → yeni)</th><th>Durum</th><th>Yeni hali olan display\'ler</th><th>Eski hali olan display\'ler</th></tr></thead><tbody>' + ccRowsHtml(prob, true) + '</tbody></table>';
+    }
+    body += '</div>';
     const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">' +
       '<title>Display Revizyon Raporu</title><style>' + $('app-style').textContent + '</style></head><body>' + body + '</body></html>';
