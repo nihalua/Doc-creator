@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Güvenlik: sayfa hiçbir dış sunucuya bağlanamaz (connect-src 'none'). Dosyalar bilgisayarınızdan çıkmaz. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>PDF Revizyon Karşılaştırma</title>
+<style id="app-style">
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dde1e8;
+  --accent: #2f5bd3; --accent-soft: #e7edfc;
+  --ins-bg: #d9f4df; --ins-fg: #0f5a26; --del-bg: #fbdcdc; --del-fg: #8a1414; --mod: #9a5b00; --mod-bg: #fdeccc;
+  --high: #c62828; --med: #c77700; --low: #6b7484;
+  --shadow: 0 1px 2px rgba(20,30,50,.06), 0 2px 8px rgba(20,30,50,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d; --panel: #1c2028; --text: #e6e9ef; --muted: #9aa3b2; --border: #313744;
+    --accent: #7ea2ff; --accent-soft: #24304d;
+    --ins-bg: #173a22; --ins-fg: #9fe3b0; --del-bg: #45201f; --del-fg: #ffb3ad; --mod: #f0b45a; --mod-bg: #3d2f17;
+    --high: #ff6b6b; --med: #f0a742; --low: #8e97a8;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+header.top h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+.privacy { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ins-fg); background: var(--ins-bg); padding: 6px 12px; border-radius: 999px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 18px; }
+.drops { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 720px) { .drops { grid-template-columns: 1fr; } }
+.drop { border: 2px dashed var(--border); border-radius: 12px; padding: 22px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; background: var(--panel); position: relative; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop.loaded { border-style: solid; border-color: var(--accent); }
+.drop .lbl { font-weight: 650; font-size: 16px; }
+.drop .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.drop .file { margin-top: 10px; font-size: 14px; word-break: break-all; }
+.drop input { display: none; }
+.tag-a, .tag-b { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 6px; margin-right: 6px; }
+.tag-a { background: var(--del-bg); color: var(--del-fg); }
+.tag-b { background: var(--ins-bg); color: var(--ins-fg); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; margin-top: 16px; }
+.controls label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); padding: 7px 14px; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; padding: 9px 22px; }
+@media (prefers-color-scheme: dark) { button.primary { color: #0d1220; } }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.status { margin-top: 12px; font-size: 14px; color: var(--muted); min-height: 1.4em; }
+.status.err { color: var(--high); }
+#results { margin-top: 22px; display: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.tabs button { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 10px 14px; color: var(--muted); font-weight: 600; }
+.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tabs .spacer { flex: 1; }
+.tabs .act { align-self: center; padding: 5px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+.tab { display: none; }
+.tab.active { display: block; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.tile .n { font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile .l { font-size: 13px; color: var(--muted); }
+.tile.ins .n { color: var(--ins-fg); } .tile.del .n { color: var(--del-fg); } .tile.mod .n { color: var(--mod); } .tile.high .n { color: var(--high); }
+h2 { font-size: 18px; margin: 26px 0 10px; }
+h3 { font-size: 15px; margin: 18px 0 8px; }
+.lead { margin: 0 0 6px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.cards { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.card.flash { outline: 3px solid var(--accent); }
+.card-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.card-h .num { font-weight: 700; color: var(--muted); }
+.card-h .sec { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.card-h .pg { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+.b-ins { background: var(--ins-bg); color: var(--ins-fg); } .b-del { background: var(--del-bg); color: var(--del-fg); } .b-mod { background: var(--mod-bg); color: var(--mod); }
+.lv-high { color: #fff; background: var(--high); } .lv-med { color: #fff; background: var(--med); } .lv-low { color: var(--low); border: 1px solid var(--border); }
+@media (prefers-color-scheme: dark) { .lv-high, .lv-med { color: #111; } }
+.reasons { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; }
+.reason { font-size: 12.5px; background: var(--accent-soft); color: var(--text); padding: 2px 9px; border-radius: 6px; }
+.sbs { display: grid; grid-template-columns: 1fr 1fr; }
+.sbs > div { padding: 10px 14px 12px; font-size: 14.5px; white-space: pre-wrap; word-wrap: break-word; }
+.sbs > div + div { border-left: 1px solid var(--border); }
+.sbs .colh { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+@media (max-width: 720px) { .sbs { grid-template-columns: 1fr; } .sbs > div + div { border-left: none; border-top: 1px solid var(--border); } }
+.ctx { color: var(--muted); }
+del, ins { text-decoration: none; border-radius: 3px; padding: 0 2px; }
+del { background: var(--del-bg); color: var(--del-fg); text-decoration: line-through; text-decoration-thickness: 1px; }
+ins { background: var(--ins-bg); color: var(--ins-fg); }
+.empty-side { color: var(--muted); font-style: italic; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 14px; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 4px 11px; font-size: 13px; border-radius: 999px; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .chip.on { color: #0d1220; } }
+.filters input[type=search], .filters select { font: inherit; font-size: 14px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+.filters input[type=search] { min-width: 220px; flex: 1; }
+.list-top { display: flex; flex-direction: column; gap: 8px; }
+.top-item { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+.top-item:hover { border-color: var(--accent); }
+.top-item .rk { font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1.6em; }
+.top-item .ex { font-size: 14px; margin-top: 4px; white-space: pre-wrap; word-wrap: break-word; }
+.top-item .pg { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+table.sec { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.sec th, table.sec td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+table.sec th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+table.sec td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.bar { height: 7px; background: var(--accent); border-radius: 4px; min-width: 2px; }
+.terms { display: flex; flex-wrap: wrap; gap: 6px; }
+.term { background: var(--accent-soft); padding: 3px 10px; border-radius: 999px; font-size: 13.5px; }
+.term small { color: var(--muted); margin-left: 4px; }
+ol.keys { padding-left: 22px; margin: 0; }
+ol.keys li { margin-bottom: 8px; }
+.pgref { font-size: 12px; color: var(--muted); white-space: nowrap; }
+ul.outline { list-style: none; padding: 0; margin: 0; columns: 2 320px; column-gap: 28px; }
+ul.outline li { break-inside: avoid; padding: 3px 0; font-size: 14px; display: flex; gap: 8px; justify-content: space-between; border-bottom: 1px dotted var(--border); }
+details { margin-top: 8px; }
+summary { cursor: pointer; font-weight: 600; }
+.req-list { margin: 8px 0 0; padding-left: 20px; font-size: 14px; }
+.req-list li { margin-bottom: 6px; }
+.docswitch { display: inline-flex; gap: 6px; margin-bottom: 10px; }
+.more { display: block; margin: 16px auto 0; }
+.note { font-size: 13px; color: var(--muted); border-left: 3px solid var(--border); padding: 4px 10px; margin: 10px 0; }
+.warn { color: var(--mod); }
+footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); text-align: center; }
+@media print {
+  body { background: #fff; }
+  .no-print, .drops, .controls, .tabs, .filters, .more, header .privacy { display: none !important; }
+  .tab { display: block !important; page-break-before: always; }
+  .tab:first-of-type { page-break-before: auto; }
+  .card, .top-item { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>PDF Revizyon Karşılaştırma</h1>
+    <span class="privacy" title="Bu sayfa internete bağlanamaz; tüm işlem bilgisayarınızda yapılır.">🔒 Tamamen çevrimdışı — dosyalar bilgisayarınızdan çıkmaz</span>
+  </header>
+
+  <section class="panel no-print" id="setup">
+    <div class="drops">
+      <label class="drop" id="dropA">
+        <div class="lbl"><span class="tag-a">A</span>Eski revizyon</div>
+        <div class="hint">PDF'i buraya sürükleyin veya tıklayıp seçin</div>
+        <div class="file" id="fileA"></div>
+        <input type="file" accept="application/pdf,.pdf" id="inA">
+      </label>
+      <label class="drop" id="dropB">
+        <div class="lbl"><span class="tag-b">B</span>Yeni revizyon</div>
+        <div class="hint">PDF'i buraya sürükleyin veya tıklayıp seçin</div>
+        <div class="file" id="fileB"></div>
+        <input type="file" accept="application/pdf,.pdf" id="inB">
+      </label>
+    </div>
+    <div class="controls">
+      <button class="primary" id="go" disabled>Karşılaştır</button>
+      <button id="swap" title="A ile B'nin yerini değiştir">⇄ Yer değiştir</button>
+      <label><input type="checkbox" id="optBoiler" checked> Üst/alt bilgi ve sayfa numaralarını yoksay</label>
+      <label><input type="checkbox" id="optCase"> Büyük/küçük harf farkını yoksay</label>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section id="results">
+    <nav class="tabs">
+      <button data-tab="ov" class="active">Genel Bakış</button>
+      <button data-tab="all">Tüm Farklar <span id="cntAll" class="muted"></span></button>
+      <button data-tab="sum">Doküman Özeti</button>
+      <span class="spacer"></span>
+      <button class="act no-print" id="dl">⬇ Raporu indir (HTML)</button>
+      <button class="act no-print" id="pr">🖨 Yazdır / PDF</button>
+    </nav>
+    <div class="tab active" id="tab-ov"></div>
+    <div class="tab" id="tab-all">
+      <div class="filters no-print">
+        <span class="chips" id="fType">
+          <button class="chip on" data-v="all">Tümü</button>
+          <button class="chip" data-v="mod">Değiştirilen</button>
+          <button class="chip" data-v="ins">Eklenen</button>
+          <button class="chip" data-v="del">Silinen</button>
+        </span>
+        <span class="chips" id="fLevel">
+          <button class="chip on" data-v="all">Her önem</button>
+          <button class="chip" data-v="high">Yüksek</button>
+          <button class="chip" data-v="med">Orta+</button>
+        </span>
+        <label class="small muted"><input type="checkbox" id="fCos" checked> Biçimsel farkları gizle</label>
+        <select id="fSort"><option value="doc">Doküman sırası</option><option value="imp">Önem sırası</option></select>
+        <input type="search" id="fq" placeholder="Farklarda ara…">
+      </div>
+      <div class="small muted" id="fInfo" style="margin-bottom:10px"></div>
+      <div class="cards" id="list"></div>
+      <button class="more" id="more" style="display:none">Daha fazla göster</button>
+    </div>
+    <div class="tab" id="tab-sum"></div>
+  </section>
+
+  <footer>Tüm işlemler tarayıcınızın içinde yapılır; sayfa internet bağlantısı kurmaz. PDF okuma: Mozilla pdf.js (Apache 2.0).</footer>
+</div>
+
+<script src="lib/pdf.min.js"></script>
+<script src="lib/pdf.worker.min.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
