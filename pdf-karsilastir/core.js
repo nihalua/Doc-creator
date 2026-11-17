@@ -890,10 +890,17 @@
       const nF = textFeatures([pre + ' ' + c.newText + ' ' + post]);
       // yalnızca gerçekten kalkmış (son revizyonda hiç geçmeyen) / gerçekten yeni (önceki revizyonda hiç geçmeyen) ifadeler
       const oldK = [], newK = [];
-      oF.ids.forEach(f => { if (!nF.ids.has(f) && !Vl.ids.has(f)) oldK.push({ f, kind: 'ids' }); });
-      oF.ph.forEach(f => { if (!nF.ph.has(f) && !Vl.ph.has(f)) oldK.push({ f, kind: 'ph' }); });
-      nF.ids.forEach(f => { if (!oF.ids.has(f) && !Vp.ids.has(f)) newK.push({ f, kind: 'ids' }); });
-      nF.ph.forEach(f => { if (!oF.ph.has(f) && !Vp.ph.has(f)) newK.push({ f, kind: 'ph' }); });
+      // - ifade gerçekten o revizyonun metninde geçmeli (Vp/Vl): değişiklik parçalarının birleştirilmesiyle oluşan yapay ifadeler elenir
+      // - saf eklemede "eski hal", saf silmede "yeni hal" aranmaz: yalnızca çevre kelimelerden oluşan ifadeler tablo/düzen
+      //   değişikliklerinde yanlış alarm üretir
+      if (c.oldText) {
+        oF.ids.forEach(f => { if (!nF.ids.has(f) && !Vl.ids.has(f) && Vp.ids.has(f)) oldK.push({ f, kind: 'ids' }); });
+        oF.ph.forEach(f => { if (!nF.ph.has(f) && !Vl.ph.has(f) && Vp.ph.has(f)) oldK.push({ f, kind: 'ph' }); });
+      }
+      if (c.newText) {
+        nF.ids.forEach(f => { if (!oF.ids.has(f) && !Vp.ids.has(f) && Vl.ids.has(f)) newK.push({ f, kind: 'ids' }); });
+        nF.ph.forEach(f => { if (!oF.ph.has(f) && !Vp.ph.has(f) && Vl.ph.has(f)) newK.push({ f, kind: 'ph' }); });
+      }
       if (!oldK.length && !newK.length) { unchecked++; continue; }
       const hasOld = [], hasNew = [];
       for (const d of displays) {
