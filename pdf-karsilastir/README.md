@@ -27,7 +27,10 @@ Aynı dokümanın iki revizyonunu (ör. Rev A ve Rev B) karşılaştırıp arada
 
 **Doküman Özeti** (her iki revizyon için): başlık, anahtar terimler, öne çıkan cümleler, içindekiler ve yükümlülük içeren ifadelerin listesi.
 
-**Rapor**: "Raporu indir (HTML)" ile sonuçları tek dosya halinde kaydedebilir, "Yazdır / PDF" ile PDF'e dönüştürebilirsiniz.
+**Paylaşım raporu (sadece farklar)**: Başkasıyla paylaşmak için hazırlanmış, sade bir fark listesi (`fark-listesi.html`). Her satırda yalnızca şunlar bulunur: sıra numarası, A ve B'deki sayfa numarası, tür (değiştirildi / eklendi / silindi), önem, kategori (sayısal değer, yükümlülük ifadesi, başlık…), eski metin ve yeni metin.
+**Raporda olmayanlar:** değişen metnin çevresindeki metin, doküman özeti, dosya adları ve bölüm başlıkları. Paylaşmadan önce dosyayı açıp kontrol etmeniz önerilir.
+
+**Tam rapor**: "Tam rapor (HTML)" bağlam ve doküman özeti dahil her şeyi içerir; yalnızca kendi kullanımınız içindir. "Yazdır / PDF" ile ekrandaki sonuçları PDF'e dönüştürebilirsiniz.
 
 ## Notlar ve sınırlamalar
 - Karşılaştırma kelime düzeyinde yapılır. Bu nedenle satır kaymaları ve sayfa düzeni değişiklikleri yanlış fark olarak görünmez.

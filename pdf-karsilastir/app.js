@@ -361,12 +361,71 @@
     const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">' +
       '<title>Karşılaştırma Raporu</title><style>' + css + '</style></head><body>' + body + '</body></html>';
+    const base = s => s.replace(/\.pdf$/i, '').replace(/[^\p{L}\p{N}_.-]+/gu, '_').slice(0, 40);
+    download(html, 'fark-raporu_' + base(state.names.A) + '_vs_' + base(state.names.B) + '.html');
+  });
+
+  function download(html, name) {
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    const base = s => s.replace(/\.pdf$/i, '').replace(/[^\p{L}\p{N}_.-]+/gu, '_').slice(0, 40);
-    a.download = 'fark-raporu_' + base(state.names.A) + '_vs_' + base(state.names.B) + '.html';
+    a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
+  // ---------------------------------------------------------- paylaşım raporu
+  // Sadece farklar: bağlam yok, doküman özeti yok, dosya adı yok, bölüm başlığı yok.
+  // Her satırda: sıra, sayfa (A/B), tür, önem, değişiklik kategorisi, eski metin, yeni metin.
+  const REASON_CAT = { num: 'Sayısal değer', req: 'Yükümlülük / olumsuzluk ifadesi', head: 'Başlık / bölüm', size: 'Büyük değişiklik' };
+
+  function shareSide(c, want) {
+    // yalnızca değişen bölüm (+ değişiklik içindeki en fazla 3 kelimelik ortak boşluklar); bağlam yok
+    let h = '';
+    c.segs.forEach(s => {
+      if (s.type === 'eq') h += ' ' + esc(s.text) + ' ';
+      else if (s.type === want) h += want === 'del' ? '<del>' + esc(s.text) + '</del>' : '<ins>' + esc(s.text) + '</ins>';
+    });
+    h = h.replace(/\s+/g, ' ').trim();
+    const hasChange = c.segs.some(s => s.type === want);
+    return hasChange ? h : '<span class="none">—</span>';
+  }
+
+  $('dlShare').addEventListener('click', () => {
+    const real = state.result.changes.filter(c => !c.cosmetic);
+    const st = state.result.stats;
+    const cnt = t => real.filter(c => c.type === t).length;
+    const date = new Date().toLocaleString('tr-TR');
+    const rows = real.map((c, i) => {
+      const cats = [...new Set(c.reasons.map(r => REASON_CAT[r.k]).filter(Boolean))].join(', ');
+      return '<tr class="lv-' + c.level + '">' +
+        '<td class="n">' + (i + 1) + '</td>' +
+        '<td class="n">' + (c.pageA != null ? c.pageA : '—') + '</td>' +
+        '<td class="n">' + (c.pageB != null ? c.pageB : '—') + '</td>' +
+        '<td>' + TYPE_LBL[c.type] + '</td>' +
+        '<td class="lv">' + LV_LBL[c.level] + '</td>' +
+        '<td>' + esc(cats || '—') + '</td>' +
+        '<td>' + shareSide(c, 'del') + '</td>' +
+        '<td>' + shareSide(c, 'ins') + '</td></tr>';
+    }).join('');
+    const css = 'body{font:14px/1.5 system-ui,-apple-system,"Segoe UI",Arial,sans-serif;margin:24px;color:#1d2330;background:#fff}' +
+      'h1{font-size:20px;margin:0 0 4px}p{margin:4px 0}.muted{color:#5d6677;font-size:13px}' +
+      'table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #d5dae3;padding:6px 8px;vertical-align:top;text-align:left}' +
+      'th{background:#f1f3f7;font-size:12.5px}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+      'del{background:#fbdcdc;color:#8a1414}ins{background:#d9f4df;color:#0f5a26;text-decoration:none}' +
+      'tr.lv-high td.lv{color:#c62828;font-weight:700}tr.lv-med td.lv{color:#b06a00;font-weight:600}.none{color:#9aa3b2}' +
+      '@media print{tr{break-inside:avoid}}';
+    const html = '<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">' +
+      '<title>Fark Listesi</title><style>' + css + '</style></head><body>' +
+      '<h1>Revizyon Fark Listesi</h1>' +
+      '<p class="muted">' + esc(date) + ' · A = eski revizyon, B = yeni revizyon · Sayfa: A ' + st.pagesA + ', B ' + st.pagesB + '</p>' +
+      '<p>Toplam <b>' + real.length + '</b> fark: ' + cnt('mod') + ' değiştirilen, ' + cnt('ins') + ' eklenen, ' + cnt('del') + ' silinen. ' +
+      'Yüksek önemli: <b>' + real.filter(c => c.level === 'high').length + '</b>.</p>' +
+      '<p class="muted">Bu listede yalnızca değişen metin vardır; çevresindeki metin, doküman özeti, dosya adları ve bölüm başlıkları yer almaz. Yalnızca noktalama veya büyük/küçük harf farkları listelenmemiştir.</p>' +
+      (real.length ? '<table><thead><tr><th>#</th><th>Sayfa A</th><th>Sayfa B</th><th>Tür</th><th>Önem</th><th>Kategori</th><th>Eski metin (A)</th><th>Yeni metin (B)</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        : '<p><b>İçerik farkı bulunamadı.</b></p>') +
+      '</body></html>';
+    download(html, 'fark-listesi.html');
   });
 })();
