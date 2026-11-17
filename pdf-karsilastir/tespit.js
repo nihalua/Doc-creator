@@ -26,7 +26,8 @@
     files.filter(f => /\.pdf$/i.test(f.name)).forEach(f => {
       if (!state.revs.some(r => r.file.name === f.name && r.file.size === f.size)) state.revs.push({ file: f, label: guessLabel(f.name) });
     });
-    sortRevs(); renderLists();
+    if (!state.manualOrder) sortRevs(); // kullanıcı elle sıraladıysa onun sırası korunur
+    renderLists();
   }
   function sortRevs() { state.revs.sort((a, b) => natural(a.label, b.label)); }
   function addDisps(files) {
@@ -82,7 +83,7 @@
     $('revList').innerHTML = state.revs.map((r, i) =>
       '<div class="row"><span class="muted">' + (i + 1) + '.</span><input type="text" data-i="' + i + '" value="' + esc(r.label) + '" title="Revizyon etiketi">' +
       '<input type="text" class="dt" data-d="' + i + '" value="' + esc(r.date || '') + '" placeholder="yayın tarihi" title="İsteğe bağlı: revizyonun yayın tarihi (gg.aa.yyyy). Display değişiklik tarihleriyle karşılaştırmak için.">' +
-      '<span class="nm">' + esc(r.file.name) + '</span><button data-up="' + i + '" title="Yukarı (daha eski)"' + (i ? '' : ' disabled') + '>↑</button><button data-dn="' + i + '" title="Aşağı (daha yeni)"' + (i < state.revs.length - 1 ? '' : ' disabled') + '>↓</button><button data-del="' + i + '" title="Listeden çıkar">✕</button></div>').join('');
+      '<span class="nm">' + esc(r.file.name) + (i === state.revs.length - 1 && state.revs.length > 1 ? ' <b style="color:var(--ok-fg)">← güncel</b>' : '') + '</span><button data-up="' + i + '" title="Yukarı (daha eski)"' + (i ? '' : ' disabled') + '>↑</button><button data-dn="' + i + '" title="Aşağı (daha yeni)"' + (i < state.revs.length - 1 ? '' : ' disabled') + '>↓</button><button data-del="' + i + '" title="Listeden çıkar">✕</button></div>').join('');
     $('revHint').style.display = state.revs.length ? 'block' : 'none';
     $('revList').querySelectorAll('input[type=text]:not(.dt)').forEach(inp => inp.addEventListener('change', () => {
       state.revs[+inp.dataset.i].label = inp.value.trim() || state.revs[+inp.dataset.i].label; renderLists();
@@ -92,7 +93,7 @@
       if (v && !DocCore.parseDate(v)) { inp.style.borderColor = 'var(--bad-fg)'; return; }
       inp.style.borderColor = ''; state.revs[+inp.dataset.d].date = v;
     }));
-    const swap = (a, b) => { const t = state.revs[a]; state.revs[a] = state.revs[b]; state.revs[b] = t; renderLists(); };
+    const swap = (a, b) => { const t = state.revs[a]; state.revs[a] = state.revs[b]; state.revs[b] = t; state.manualOrder = true; renderLists(); };
     $('revList').querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => swap(+b.dataset.up, +b.dataset.up - 1)));
     $('revList').querySelectorAll('[data-dn]').forEach(b => b.addEventListener('click', () => swap(+b.dataset.dn, +b.dataset.dn + 1)));
     $('revList').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { state.revs.splice(+b.dataset.del, 1); renderLists(); }));
@@ -161,7 +162,7 @@
     $('listText').value = text; setList(text);
   });
   $('pickList').addEventListener('click', () => $('listFile').click());
-  $('clear').addEventListener('click', () => { state.revs = []; state.disps = []; state.dispKeys = new Set(); renderLists(); $('results').style.display = 'none'; status(''); });
+  $('clear').addEventListener('click', () => { state.manualOrder = false; state.revs = []; state.disps = []; state.dispKeys = new Set(); renderLists(); $('results').style.display = 'none'; status(''); });
 
   // ------------------------------------------------------------ okuma
   async function readPdf(file, label) {
