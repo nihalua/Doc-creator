@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fabrika Haftası Takibi</title>
+<style>
+/* Layout: a work-order board — summary strip of open items, then one accordion card per factory week with numbered steps */
+:root {
+  --bg: #eceff2; --surface: #ffffff; --surface-2: #f5f7f9; --ink: #1a2129; --muted: #5a6571; --line: #d3d9e0;
+  --accent: #1f5ca3; --accent-ink: #ffffff; --signal: #f0b400; --signal-ink: #1a1400;
+  --good: #1c7745; --good-bg: #e2f3e9; --crit: #b2261d; --crit-bg: #fbe7e5; --wait: #1f5ca3; --wait-bg: #e3edf8; --todo-bg: #fdf3d3;
+  --f-display: "Bahnschrift", "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Segoe UI", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "Cascadia Mono", Consolas, ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151a; --surface: #192028; --surface-2: #1f2730; --ink: #e5e9ee; --muted: #98a3ae; --line: #2d3641;
+  --accent: #6fa7ea; --accent-ink: #0b1420; --signal: #f0b400; --signal-ink: #1a1400;
+  --good: #52c487; --good-bg: #16301f; --crit: #f2776d; --crit-bg: #3a1a18; --wait: #6fa7ea; --wait-bg: #172a40; --todo-bg: #3a3012;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11151a; --surface: #192028; --surface-2: #1f2730; --ink: #e5e9ee; --muted: #98a3ae; --line: #2d3641;
+  --accent: #6fa7ea; --accent-ink: #0b1420; --signal: #f0b400; --signal-ink: #1a1400;
+  --good: #52c487; --good-bg: #16301f; --crit: #f2776d; --crit-bg: #3a1a18; --wait: #6fa7ea; --wait-bg: #172a40; --todo-bg: #3a3012;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 24px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; letter-spacing: .01em; }
+h1 { font-size: 30px; line-height: 1.1; }
+.mono, input, .num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--f-mono); }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 20px; }
+.top p { margin: 4px 0 0; color: var(--muted); }
+.add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 7px 12px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: var(--crit); }
+.btn.danger.armed { background: var(--crit); color: var(--surface); border-color: var(--crit); }
+input[type=date], input[type=time], input[type=text], textarea { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--good); margin: 0; flex: none; }
+
+.banner { padding: 10px 14px; border-radius: 6px; background: var(--todo-bg); font-size: 14px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.save { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+
+/* Summary strip */
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stat { background: var(--surface); padding: 12px 14px; display: grid; gap: 2px; }
+.stat .k { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.stat .v { font-family: var(--f-display); font-size: 28px; font-weight: 700; line-height: 1.1; }
+.stat.hot .v { color: var(--crit); }
+.stat.zero .v { color: var(--muted); font-weight: 600; }
+
+/* Week cards */
+.weeks { display: grid; gap: 10px; }
+.week { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.week.open { border-color: var(--muted); }
+.week-head { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 14px 16px; width: 100%; }
+.week-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wh-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+.wh-title h2 { font-size: 21px; }
+.wh-title .dates { color: var(--muted); font-size: 14px; }
+.wh-next { grid-column: 1 / -1; font-size: 14px; color: var(--muted); }
+.wh-next b { color: var(--ink); font-weight: 600; }
+.pill { justify-self: end; align-self: start; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.good { background: var(--good-bg); color: var(--good); }
+.pill.crit { background: var(--crit-bg); color: var(--crit); }
+.pill.wait { background: var(--wait-bg); color: var(--wait); }
+.pill.todo { background: var(--todo-bg); color: var(--ink); }
+.bar { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; }
+.bar i { height: 6px; border-radius: 2px; background: var(--line); }
+.bar i.on { background: var(--good); }
+.bar i.bad { background: var(--crit); }
+
+.week-body { border-top: 1px solid var(--line); background: var(--surface-2); padding: 4px 16px 16px; display: grid; gap: 0; }
+.step { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding-block: 16px; border-bottom: 1px dashed var(--line); }
+.step:last-of-type { border-bottom: 0; }
+.step-n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-family: var(--f-mono); font-size: 13px; font-weight: 500; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+.step.done .step-n { background: var(--good); border-color: var(--good); color: var(--surface); }
+.step.warn .step-n { background: var(--crit); border-color: var(--crit); color: var(--surface); }
+.step-c { display: grid; gap: 10px; min-width: 0; }
+.step-c h3 { font-size: 18px; }
+.hint { font-size: 13px; color: var(--muted); margin: -6px 0 0; }
+
+.daychips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 10px; cursor: pointer; display: grid; text-align: center; line-height: 1.15; min-width: 54px; }
+.chip small { font-size: 11px; color: var(--muted); font-family: var(--f-mono); }
+.chip[aria-pressed="true"] { background: var(--signal); border-color: var(--signal); color: var(--signal-ink); font-weight: 600; }
+.chip[aria-pressed="true"] small { color: var(--signal-ink); }
+
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding: 4px 8px 6px 0; white-space: nowrap; }
+td { padding: 5px 8px 5px 0; vertical-align: middle; white-space: nowrap; }
+td input[type=time] { width: 104px; }
+td input.small { width: 64px; }
+td input.amt { width: 110px; text-align: right; }
+tfoot td { border-top: 1px solid var(--line); font-weight: 600; padding-top: 8px; }
+.ok { color: var(--good); font-weight: 600; }
+.bad { color: var(--crit); font-weight: 600; }
+.dim { color: var(--muted); }
+tr.na td:not(:last-child) { opacity: .45; }
+
+.check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.check label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
+.check input[type=date] { font-size: 13px; padding: 4px 6px; }
+.cmp { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.alert { padding: 8px 12px; border-radius: 6px; font-size: 14px; background: var(--crit-bg); color: var(--crit); }
+.alert.fine { background: var(--good-bg); color: var(--good); }
+textarea { width: 100%; min-height: 60px; resize: vertical; }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding-top: 12px; }
+.empty { background: var(--surface); border: 1px dashed var(--line); border-radius: 8px; padding: 28px 20px; text-align: center; color: var(--muted); }
+.empty b { color: var(--ink); }
+@media (max-width: 520px) { h1 { font-size: 26px; } .step { grid-template-columns: 1fr; gap: 8px; } }
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: background .2s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Fabrika Haftası Takibi</h1>
+      <p>EWR, Concur, allowance'lar, benzin, ödeme ve Overwerk formulier: her hafta için tek liste. Veriler bu bilgisayardaki tarayıcıda saklanır.</p>
+    </div>
+    <div class="add">
+      <input type="date" id="add-date" aria-label="Haftadan bir gün seç">
+      <button class="btn primary" id="add-btn">Hafta ekle</button>
+      <button class="btn" id="add-this">Bu hafta</button>
+    </div>
+  </header>
+  <div class="tools">
+    <button class="btn" id="exp">Yedeği indir</button>
+    <button class="btn" id="imp">Yedekten yükle</button>
+    <input type="file" id="imp-file" accept=".json,application/json" hidden>
+    <button class="btn" id="ewr-imp" hidden>EWR'deki günleri al</button>
+    <span class="dim" id="tools-msg"></span>
+  </div>
+  <div class="banner" id="banner" hidden></div>
+  <section class="summary" id="summary" aria-label="Açık işler"></section>
+  <div class="save" id="save" aria-live="polite"></div>
+  <section class="weeks" id="weeks">
+    <div class="empty" id="loading">Haftalar yükleniyor…</div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const LINES = [
+    ["hotel", "Otel"],
+    ["payroll", "Payroll allowance"],
+    ["er", "ER allowance"],
+    ["fuel", "Kiralık araç benzini"],
+  ];
+  const DAYN = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+  const MON = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+  const eur = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
+  const hrsFmt = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 });
+  const $ = (s, r = document) => r.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k === "value") n.value = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else if (k in n && typeof v !== "string") n[k] = v;
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of kids.flat()) if (c != null) n.append(c);
+    return n;
+  };
+
+  /* ---------- dates ---------- */
+  const pad = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const parseYmd = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const todayYmd = () => { const t = new Date(); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`; };
+  function mondayOf(s) { const d = parseYmd(s); const wd = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() - wd + 1); return ymd(d); }
+  function weekIdOf(s) {
+    const d = parseYmd(s); const wd = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - wd);
+    const y0 = Date.UTC(d.getUTCFullYear(), 0, 1);
+    const wk = Math.ceil(((d - y0) / 86400000 + 1) / 7);
+    return `${d.getUTCFullYear()}-W${pad(wk)}`;
+  }
+  const addDays = (s, n) => { const d = parseYmd(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
+  const short = (s) => { const d = parseYmd(s); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+  const rangeLabel = (mon) => { const sun = addDays(mon, 6); const a = parseYmd(mon), b = parseYmd(sun);
+    return a.getUTCMonth() === b.getUTCMonth() ? `${a.getUTCDate()}–${b.getUTCDate()} ${MON[b.getUTCMonth()]} ${b.getUTCFullYear()}` : `${short(mon)} – ${short(sun)} ${b.getUTCFullYear()}`; };
+
+  /* ---------- model ---------- */
+  function blankWeek(anyDate) {
+    const monday = mondayOf(anyDate);
+    const lines = {}; for (const [k] of LINES) lines[k] = { amt: null, entered: false, paid: false, na: false };
+    return { id: weekIdOf(monday), monday, days: {}, ewr: { done: false, date: "" }, lines,
+      submitted: { done: false, date: "" }, overwerk: { sent: false, date: "" }, paidDate: "", note: "" };
+  }
+  function normalize(w) {
+    const b = blankWeek(w.monday || todayYmd());
+    const out = { ...b, ...w, ewr: { ...b.ewr, ...(w.ewr || {}) }, submitted: { ...b.submitted, ...(w.submitted || {}) },
+      overwerk: { ...b.overwerk, ...(w.overwerk || {}) }, days: { ...(w.days || {}) }, lines: {} };
+    for (const [k] of LINES) out.lines[k] = { ...b.lines[k], ...((w.lines || {})[k] || {}) };
+    return out;
+  }
+  const toMin = (t) => { if (!t || !/^\d\d:\d\d$/.test(t)) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  function dayHours(d) {
+    const s = toMin(d.start), e = toMin(d.end); if (s == null || e == null) return null;
+    let mins = e - s; if (mins < 0) mins += 1440; mins -= Number(d.pause) || 0;
+    return Math.max(0, Math.round(mins / 60 * 100) / 100);
+  }
+  const num = (v) => { if (v == null || v === "") return null; const n = Number(String(v).replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
+  const activeLines = (w) => LINES.filter(([k]) => !w.lines[k].na);
+  function hoursCheck(w) {
+    const dates = Object.keys(w.days).sort(); let ts = 0, form = 0, filled = 0, mism = [];
+    for (const dt of dates) { const d = w.days[dt]; const h = dayHours(d) ?? 0; ts += h; const f = num(d.ow);
+      if (f != null) { filled++; form += f; if (Math.abs(f - h) > 0.01) mism.push(dt); } }
+    return { dates, ts: Math.round(ts * 100) / 100, form: Math.round(form * 100) / 100, filled, mism, allFilled: dates.length > 0 && filled === dates.length };
+  }
+  function checks(w) {
+    const hc = hoursCheck(w);
+    const list = [["EWR", w.ewr.done]];
+    for (const [k, lbl] of activeLines(w)) list.push([lbl + " Concur'da", w.lines[k].entered]);
+    list.push(["Submit", w.submitted.done], ["Overwerk", w.overwerk.sent && hc.mism.length === 0, hc.mism.length > 0]);
+    for (const [k, lbl] of activeLines(w)) list.push([lbl + " ödendi", w.lines[k].paid]);
+    return list;
+  }
+  function status(w) {
+    const hc = hoursCheck(w);
+    const missingEntry = activeLines(w).filter(([k]) => !w.lines[k].entered).map(([, l]) => l);
+    const unpaid = activeLines(w).filter(([k]) => !w.lines[k].paid).map(([, l]) => l);
+    const todo = [];
+    if (!hc.dates.length) todo.push("Çalıştığın günleri işaretle");
+    if (!w.ewr.done) todo.push("EWR hazırla");
+    if (missingEntry.length) todo.push("Concur'a gir: " + missingEntry.join(", "));
+    else if (!w.submitted.done) todo.push("Concur'da submit et");
+    if (hc.mism.length) todo.push("Overwerk saatleri timesheet ile uyuşmuyor");
+    else if (!w.overwerk.sent) todo.push("Overwerk formulier gönder");
+    if (w.submitted.done && unpaid.length) todo.push("Hesabı kontrol et: " + unpaid.join(", "));
+    let tone = "todo", label = "Yapılacak var";
+    if (hc.mism.length) { tone = "crit"; label = "Saat uyumsuz"; }
+    else if (!todo.length) { tone = "good"; label = "Tamamlandı"; }
+    else if (todo.length === 1 && todo[0].startsWith("Hesabı")) { tone = "wait"; label = "Ödeme bekleniyor"; }
+    return { todo, tone, label, hc, unpaid };
+  }
+
+  /* ---------- storage ---------- */
+  const weeks = new Map();
+  let openId = null, mode = "db", col = null;
+  const dirty = new Set(), timers = {}, chains = {};
+  const LS = "fabrika-takip-weeks";
+  const saveEl = $("#save");
+  function banner(msg) { const b = $("#banner"); b.textContent = msg || ""; b.hidden = !msg; }
+
+  function persist(id, body) {
+    try { const all = {}; for (const [k, v] of weeks) all[k] = v; localStorage.setItem(LS, JSON.stringify(all)); } catch (e) {}
+    return Promise.resolve();
+  }
+  function scheduleSave(id) {
+    dirty.add(id); saveEl.textContent = "Kaydediliyor…";
+    clearTimeout(timers[id]);
+    timers[id] = setTimeout(() => {
+      timers[id] = null;
+      const w = weeks.get(id); if (!w) return;
+      const body = JSON.parse(JSON.stringify(w));
+      chains[id] = (chains[id] || Promise.resolve())
+        .then(() => persist(id, body))
+        .then(() => { if (!timers[id]) dirty.delete(id); saveEl.textContent = "Kaydedildi"; })
+        .catch((e) => { saveEl.textContent = ""; banner(saveError(e)); });
+    }, 600);
+  }
+  function saveError(e) {
+    if (e && e.code === "invalid_argument") return "Bu haftayı kaydetme iznin yok. Sayfanın sahibi değilsen yalnızca görüntüleyebilirsin.";
+    if (e && e.code === "quota_exceeded") return "Kayıt alanı dolu. Eski haftalardan birkaçını silip tekrar dene.";
+    return "Kaydedilemedi. Bağlantını kontrol edip değişikliği tekrar yap.";
+  }
+
+  function init() {
+    mode = "local";
+    try { const raw = JSON.parse(localStorage.getItem(LS) || "{}"); for (const [k, v] of Object.entries(raw)) weeks.set(k, normalize(v)); }
+    catch (e) { banner("Tarayıcı kayıtlara izin vermiyor. Girdiklerin sayfa kapanınca kaybolur; \"Yedeği indir\" ile sakla."); }
+    renderAll();
+    setupTools();
+  }
+
+  /* ---------- backup + EWR import ---------- */
+  const toolsMsg = $("#tools-msg");
+  function setupTools() {
+    $("#exp").addEventListener("click", () => {
+      const all = {}; for (const [k, v] of weeks) all[k] = v;
+      const blob = new Blob([JSON.stringify({ app: "fabrika-takip", version: 1, weeks: all }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `fabrika-takip-yedek-${todayYmd()}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toolsMsg.textContent = "Yedek indirildi.";
+    });
+    $("#imp").addEventListener("click", () => $("#imp-file").click());
+    $("#imp-file").addEventListener("change", async (e) => {
+      const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+      try {
+        const data = JSON.parse(await f.text()); const src = data.weeks || data; let n = 0;
+        for (const [k, v] of Object.entries(src)) if (/^\d{4}-W\d\d$/.test(k) && v && v.monday) { weeks.set(k, normalize(v)); n++; }
+        if (!n) throw new Error("empty");
+        persist(); renderAll(); toolsMsg.textContent = `${n} hafta yedekten yüklendi.`;
+      } catch (err) { toolsMsg.textContent = "Bu dosya bir Fabrika Takip yedeği değil. \"Yedeği indir\" ile alınmış .json dosyasını seç."; }
+    });
+    const ewr = readEwr();
+    if (ewr && ewr.length) { const b = $("#ewr-imp"); b.hidden = false; b.addEventListener("click", importEwr); }
+  }
+  function readEwr() {
+    try { const d = JSON.parse(localStorage.getItem("ewr-generator-v1") || "null"); return d && Array.isArray(d.days) ? d.days : null; } catch (e) { return null; }
+  }
+  function importEwr() {
+    const list = readEwr() || []; let added = 0; const touched = new Set();
+    for (const d of list) {
+      if (!d || !/^\d{4}-\d\d-\d\d$/.test(d.date)) continue;
+      const id = weekIdOf(d.date);
+      if (!weeks.has(id)) weeks.set(id, blankWeek(d.date));
+      const w = weeks.get(id); if (w.days[d.date]) continue;
+      const travel = d.type === "travel";
+      w.days[d.date] = { start: travel ? "" : (d.start || ""), end: travel ? "" : (d.end || ""), pause: travel ? 0 : Math.round((num(d.lunch) || 0) * 60), ow: "" };
+      added++; touched.add(id);
+    }
+    if (added) { openId = [...touched].sort().pop(); persist(); renderAll(); }
+    toolsMsg.textContent = added ? `EWR'den ${added} gün eklendi (${touched.size} hafta).` : "EWR'deki günler zaten listede.";
+  }
+
+  /* ---------- render ---------- */
+  function renderSummary() {
+    const s = $("#summary"); s.replaceChildren();
+    let ewr = 0, concur = 0, pay = 0, ow = 0, mism = 0, owed = 0;
+    for (const w of weeks.values()) {
+      const st = status(w);
+      if (!w.ewr.done) ewr++;
+      if (activeLines(w).some(([k]) => !w.lines[k].entered) || !w.submitted.done) concur++;
+      if (w.submitted.done && st.unpaid.length) pay++;
+      if (!w.overwerk.sent) ow++;
+      if (st.hc.mism.length) mism++;
+      for (const [k] of activeLines(w)) if (!w.lines[k].paid) owed += num(w.lines[k].amt) || 0;
+    }
+    const stat = (k, v, hot) => el("div", { class: "stat" + (v === 0 || v === eur.format(0) ? " zero" : hot ? " hot" : "") },
+      el("span", { class: "k", text: k }), el("span", { class: "v num", text: String(v) }));
+    s.append(stat("EWR bekleyen", ewr), stat("Concur eksik / submit", concur), stat("Overwerk gönderilmedi", ow),
+      stat("Saat uyumsuz", mism, true), stat("Ödeme bekleyen hafta", pay), stat("Hesaba geçecek", eur.format(owed)));
+  }
+
+  function headContent(w) {
+    const st = status(w), wk = w.id.split("-W")[1];
+    const n = Object.keys(w.days).length;
+    const bar = el("div", { class: "bar", "aria-hidden": "true" }, checks(w).map(([l, on, bad]) => el("i", { class: on ? "on" : bad ? "bad" : "", title: l })));
+    return [
+      el("div", { class: "wh-title" }, el("h2", { text: `Hafta ${Number(wk)}` }),
+        el("span", { class: "dates", text: `${rangeLabel(w.monday)} · ${n ? n + " gün fabrikada" : "gün seçilmedi"}` })),
+      el("span", { class: "pill " + st.tone, text: st.label }),
+      bar,
+      el("div", { class: "wh-next" }, st.todo.length ? [el("span", { text: "Sıradaki: " }), el("b", { text: st.todo[0] }), st.todo.length > 1 ? el("span", { text: ` (+${st.todo.length - 1})` }) : null] : el("span", { text: "Bu haftanın tüm işleri bitti." })),
+    ];
+  }
+  function updateHead(id) {
+    const art = document.querySelector(`.week[data-id="${id}"]`); if (!art) return;
+    const h = art.querySelector(".week-head"); h.replaceChildren(...headContent(weeks.get(id)));
+    renderSummary();
+    const body = art.querySelector(".week-body"); if (body) refreshDerived(weeks.get(id), body);
+  }
+
+  function renderAll() {
+    renderSummary();
+    const box = $("#weeks"); box.replaceChildren();
+    const ids = [...weeks.keys()].sort().reverse();
+    if (!ids.length) {
+      box.append(el("div", { class: "empty" }, el("b", { text: "Henüz hafta yok." }), el("br"),
+        el("span", { text: "Fabrikaya gittiğin her hafta için yukarıdan \"Bu hafta\"ya bas ya da bir tarih seçip \"Hafta ekle\"ye bas." })));
+      return;
+    }
+    for (const id of ids) {
+      const w = weeks.get(id), open = id === openId;
+      const art = el("article", { class: "week" + (open ? " open" : ""), "data-id": id });
+      art.append(el("button", { class: "week-head", "aria-expanded": String(open), onclick: () => { openId = open ? null : id; renderAll(); } }, headContent(w)));
+      if (open) art.append(detail(w));
+      box.append(art);
+    }
+  }
+
+  /* ---------- detail ---------- */
+  function touch(w) { scheduleSave(w.id); updateHead(w.id); }
+  function checkRow(w, obj, key, label, dateKey = "date") {
+    const date = el("input", { type: "date", value: obj[dateKey] || "", "aria-label": label + " tarihi", hidden: !obj[key],
+      onchange: (e) => { obj[dateKey] = e.target.value; touch(w); } });
+    const cb = el("input", { type: "checkbox", checked: !!obj[key], onchange: (e) => {
+      obj[key] = e.target.checked; if (obj[key] && !obj[dateKey]) obj[dateKey] = todayYmd();
+      date.value = obj[dateKey] || ""; date.hidden = !obj[key]; touch(w); } });
+    return el("div", { class: "check" }, el("label", {}, cb, el("span", { text: label })), date);
+  }
+  function step(n, key, title, hint, ...content) {
+    return el("section", { class: "step", "data-step": key },
+      el("div", { class: "step-n", text: String(n) }),
+      el("div", { class: "step-c" }, el("h3", { text: title }), hint ? el("p", { class: "hint", text: hint }) : null, ...content));
+  }
+
+  function detail(w) {
+    const body = el("div", { class: "week-body" });
+
+    // 1 days
+    const chips = el("div", { class: "daychips" });
+    const daysTbl = el("div", { class: "tbl-wrap" });
+    const drawDays = () => {
+      chips.replaceChildren(...DAYN.map((dn, i) => { const dt = addDays(w.monday, i), on = !!w.days[dt];
+        return el("button", { class: "chip", type: "button", "aria-pressed": String(on), onclick: () => {
+          if (w.days[dt]) delete w.days[dt]; else w.days[dt] = { start: "08:00", end: "17:00", pause: 30, ow: "" };
+          drawDays(); touch(w); } }, el("span", { text: dn }), el("small", { text: short(dt) })); }));
+      const dates = Object.keys(w.days).sort();
+      if (!dates.length) { daysTbl.replaceChildren(el("p", { class: "dim", text: "Fabrikada olduğun günlere dokun." })); return; }
+      const rows = dates.map((dt) => { const d = w.days[dt]; const i = (parseYmd(dt).getUTCDay() + 6) % 7;
+        const hrs = el("td", { class: "num mono", "data-hrs": dt }), match = el("td", { "data-match": dt });
+        const upd = () => touch(w);
+        return el("tr", {},
+          el("td", { text: `${DAYN[i]} ${short(dt)}` }),
+          el("td", {}, el("input", { type: "time", value: d.start || "", "aria-label": "Başlangıç", oninput: (e) => { d.start = e.target.value; upd(); } })),
+          el("td", {}, el("input", { type: "time", value: d.end || "", "aria-label": "Bitiş", oninput: (e) => { d.end = e.target.value; upd(); } })),
+          el("td", {}, el("input", { type: "text", inputmode: "numeric", class: "small", value: String(d.pause ?? ""), "aria-label": "Mola (dakika)", oninput: (e) => { d.pause = num(e.target.value) ?? 0; upd(); } })),
+          hrs,
+          el("td", {}, el("input", { type: "text", inputmode: "decimal", class: "small", value: d.ow ?? "", placeholder: "–", "aria-label": "Overwerk formundaki saat", oninput: (e) => { d.ow = e.target.value.trim(); upd(); } })),
+          match);
+      });
+      daysTbl.replaceChildren(el("table", {},
+        el("thead", {}, el("tr", {}, ["Gün", "Başlangıç", "Bitiş", "Mola dk", "Timesheet", "Overwerk formu", ""].map((t) => el("th", { text: t })))),
+        el("tbody", {}, rows),
+        el("tfoot", {}, el("tr", {}, el("td", { text: "Toplam" }), el("td"), el("td"), el("td"), el("td", { class: "num mono", "data-tot": "ts" }), el("td", { class: "num mono", "data-tot": "form" }), el("td")))));
+      refreshDerived(w, body);
+    };
+    body.append(step(1, "days", "Çalışma günleri ve timesheet",
+      "Timesheet'e yazdığın saatleri gir. Overwerk formuna yazdığın saati yanına yaz; ikisi her gün aynı olmalı.", chips, daysTbl));
+
+    // 2 EWR
+    body.append(step(2, "ewr", "EWR", "Bu fabrika haftası için EWR hazırlandı mı?", checkRow(w, w.ewr, "done", "EWR hazırlandı")));
+
+    // 3 Concur lines
+    const lineRows = LINES.map(([k, lbl]) => { const L = w.lines[k];
+      const tr = el("tr", { class: L.na ? "na" : "" });
+      tr.append(
+        el("td", { text: lbl }),
+        el("td", {}, el("input", { type: "text", inputmode: "decimal", class: "amt", value: L.amt != null ? L.amt.toFixed(2).replace(".", ",") : "", placeholder: "€ 0,00", "aria-label": lbl + " tutarı",
+          oninput: (e) => { L.amt = num(e.target.value); touch(w); } })),
+        el("td", {}, el("label", { class: "check" }, el("input", { type: "checkbox", checked: L.entered, "aria-label": lbl + " Concur'a girildi",
+          onchange: (e) => { L.entered = e.target.checked; touch(w); } }))),
+        el("td", {}, el("label", { class: "check" }, el("input", { type: "checkbox", checked: L.na, "aria-label": lbl + " bu hafta yok",
+          onchange: (e) => { L.na = e.target.checked; tr.className = L.na ? "na" : ""; touch(w); } }), el("span", { class: "dim", text: "yok" }))));
+      return tr; });
+    body.append(step(3, "concur", "Concur girişleri", "Tutarı yaz ve girdiğinde işaretle. O hafta olmayan kalemi \"yok\" olarak işaretle.",
+      el("div", { class: "tbl-wrap" }, el("table", {},
+        el("thead", {}, el("tr", {}, ["Kalem", "Tutar", "Girildi", "Bu hafta"].map((t) => el("th", { text: t })))),
+        el("tbody", {}, lineRows),
+        el("tfoot", {}, el("tr", {}, el("td", { text: "Toplam" }), el("td", { class: "num mono", "data-tot": "amt", style: "text-align:right" }), el("td"), el("td")))))));
+
+    // 4 Submit
+    body.append(step(4, "submit", "Concur submit", "Tüm kalemler girildikten sonra raporu submit et.", checkRow(w, w.submitted, "done", "Concur raporu submit edildi")));
+
+    // 5 Overwerk
+    const owInfo = el("div", { "data-owinfo": "1" });
+    body.append(step(5, "overwerk", "Overwerk formulier", "Göndermeden önce saatlerin timesheet ile aynı olduğundan emin ol.", owInfo, checkRow(w, w.overwerk, "sent", "Overwerk formulier gönderildi")));
+
+    // 6 Payment
+    const payRows = LINES.map(([k, lbl]) => { const L = w.lines[k];
+      return el("label", { class: "check", "data-pay": k }, el("input", { type: "checkbox", checked: L.paid,
+        onchange: (e) => { L.paid = e.target.checked; if (L.paid && !w.paidDate) w.paidDate = todayYmd(); touch(w); } }),
+        el("span", { "data-paylbl": k })); });
+    const payInfo = el("div", { class: "cmp", "data-payinfo": "1" });
+    body.append(step(6, "pay", "Hesaba yattı mı?", "Banka hesabını kontrol et ve gelen her kalemi işaretle.", el("div", { style: "display:grid;gap:8px" }, payRows), payInfo));
+
+    // note + delete
+    const del = el("button", { class: "btn danger", type: "button", text: "Haftayı sil" });
+    let armed = false;
+    del.addEventListener("click", async () => {
+      if (!armed) { armed = true; del.classList.add("armed"); del.textContent = "Emin misin? Silmek için tekrar bas"; setTimeout(() => { armed = false; del.classList.remove("armed"); del.textContent = "Haftayı sil"; }, 4000); return; }
+      const id = w.id; weeks.delete(id); openId = null; dirty.add(id); renderAll();
+      try { persist(); saveEl.textContent = "Hafta silindi"; }
+      catch (e) { banner(saveError(e)); } finally { dirty.delete(id); }
+    });
+    body.append(el("div", { class: "step-c", style: "padding-top:8px" },
+      el("label", { for: "note-" + w.id, class: "dim", text: "Not (rapor numarası, eksik fiş vb.)" }),
+      el("textarea", { id: "note-" + w.id, value: w.note || "", oninput: (e) => { w.note = e.target.value; scheduleSave(w.id); } })),
+      el("div", { class: "foot" }, el("span", { class: "dim mono", text: w.id }), del));
+
+    drawDays();
+    refreshDerived(w, body);
+    return body;
+  }
+
+  function refreshDerived(w, body) {
+    const hc = hoursCheck(w);
+    for (const dt of hc.dates) {
+      const h = dayHours(w.days[dt]); const c = body.querySelector(`[data-hrs="${dt}"]`); if (c) c.textContent = h == null ? "–" : hrsFmt.format(h) + " u";
+      const m = body.querySelector(`[data-match="${dt}"]`); if (!m) continue;
+      const f = num(w.days[dt].ow);
+      m.className = f == null ? "dim" : hc.mism.includes(dt) ? "bad" : "ok";
+      m.textContent = f == null ? "formu bekliyor" : hc.mism.includes(dt) ? "✗ uyuşmuyor" : "✓ aynı";
+    }
+    const ts = body.querySelector('[data-tot="ts"]'); if (ts) ts.textContent = hrsFmt.format(hc.ts) + " u";
+    const fm = body.querySelector('[data-tot="form"]'); if (fm) fm.textContent = hc.filled ? hrsFmt.format(hc.form) + " u" : "–";
+    let total = 0; for (const [k] of activeLines(w)) total += num(w.lines[k].amt) || 0;
+    const ta = body.querySelector('[data-tot="amt"]'); if (ta) ta.textContent = eur.format(total);
+
+    const ow = body.querySelector("[data-owinfo]");
+    if (ow) {
+      let a;
+      if (!hc.dates.length) a = el("div", { class: "alert", text: "Önce 1. adımda çalıştığın günleri gir." });
+      else if (hc.mism.length) a = el("div", { class: "alert", text: `Uyuşmayan gün: ${hc.mism.map(short).join(", ")}. Formu bu haliyle gönderme.` });
+      else if (!hc.allFilled) a = el("div", { class: "alert", text: `Formdaki saatleri 1. adımda ${hc.dates.length - hc.filled} gün için daha gir ki karşılaştırabilelim.` });
+      else a = el("div", { class: "alert fine", text: `Saatler tutuyor: timesheet ${hrsFmt.format(hc.ts)} u = form ${hrsFmt.format(hc.form)} u.` });
+      ow.replaceChildren(a);
+    }
+    let paid = 0, expect = 0;
+    for (const [k, lbl] of LINES) { const L = w.lines[k]; const row = body.querySelector(`[data-pay="${k}"]`); if (!row) continue;
+      row.hidden = L.na; const s = row.querySelector(`[data-paylbl="${k}"]`);
+      s.textContent = `${lbl}${num(L.amt) != null ? " · " + eur.format(num(L.amt)) : ""} hesaba geçti`;
+      if (!L.na) { expect += num(L.amt) || 0; if (L.paid) paid += num(L.amt) || 0; } }
+    const pi = body.querySelector("[data-payinfo]");
+    if (pi) pi.replaceChildren(el("span", { text: "Beklenen: " }), el("b", { class: "num", text: eur.format(expect) }),
+      el("span", { text: "Gelen: " }), el("b", { class: "num " + (paid >= expect && expect > 0 ? "ok" : ""), text: eur.format(paid) }),
+      expect - paid > 0.004 ? el("span", { class: "bad", text: `Eksik: ${eur.format(expect - paid)}` }) : null);
+
+    const st = status(w);
+    const mark = (key, done, warn) => { const s = body.querySelector(`[data-step="${key}"]`); if (s) { s.classList.toggle("done", !!done && !warn); s.classList.toggle("warn", !!warn); } };
+    mark("days", hc.dates.length > 0 && hc.ts > 0);
+    mark("ewr", w.ewr.done);
+    mark("concur", activeLines(w).every(([k]) => w.lines[k].entered));
+    mark("submit", w.submitted.done);
+    mark("overwerk", w.overwerk.sent && !hc.mism.length, hc.mism.length > 0);
+    mark("pay", w.submitted.done && st.unpaid.length === 0);
+  }
+
+  /* ---------- add week ---------- */
+  function addWeek(dateStr) {
+    if (!dateStr) { $("#add-date").focus(); return; }
+    const id = weekIdOf(dateStr);
+    if (!weeks.has(id)) { weeks.set(id, blankWeek(dateStr)); scheduleSave(id); saveEl.textContent = "Hafta eklendi"; }
+    openId = id; renderAll();
+    const art = document.querySelector(`.week[data-id="${id}"]`); if (art) art.scrollIntoView({ block: "nearest" });
+  }
+  $("#add-date").value = todayYmd();
+  $("#add-btn").addEventListener("click", () => addWeek($("#add-date").value));
+  $("#add-this").addEventListener("click", () => addWeek(todayYmd()));
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -414,7 +414,7 @@ textarea { width: 100%; min-height: 60px; resize: vertical; }
       const tr = el("tr", { class: L.na ? "na" : "" });
       tr.append(
         el("td", { text: lbl }),
-        el("td", {}, el("input", { type: "text", inputmode: "decimal", class: "amt", value: L.amt ?? "", placeholder: "€ 0,00", "aria-label": lbl + " tutarı",
+        el("td", {}, el("input", { type: "text", inputmode: "decimal", class: "amt", value: L.amt != null ? L.amt.toFixed(2).replace(".", ",") : "", placeholder: "€ 0,00", "aria-label": lbl + " tutarı",
           oninput: (e) => { L.amt = num(e.target.value); touch(w); } })),
         el("td", {}, el("label", { class: "check" }, el("input", { type: "checkbox", checked: L.entered, "aria-label": lbl + " Concur'a girildi",
           onchange: (e) => { L.entered = e.target.checked; touch(w); } }))),
