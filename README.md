@@ -20,13 +20,19 @@ A single-file, offline tool that fills in the **External Work Report** PDF for s
 | Travel | 1.5 h to site + 1.5 h back = 3.00 h, `R` (return) |
 | Working time | end − start − lunch = 8.50 h |
 | Signature, name | from Fixed details |
-| Signature date | the day after the last day on site |
-| Particular details, follow-up | always left empty |
+| Signature date | the day after the last day in the report |
+| Particular details, follow-up | the "Work performed" text (font shrinks slightly if long) |
+| Overnight stay hotel | `X` on days with *Hotel* ticked |
+| Preparation time | in the grey cell, added to the grand total |
 | File name | `EWR_<Employee_Name>_<Location>_week<NN>.pdf`, e.g. `EWR_Jane_Doe_HH1_week45.pdf` |
 
 - Working hours go into the *working time 08.00-17.00 h* row by default. In the defaults you
   can choose to split them over the 00-08 / 08-17 / 17-22 / 22-24 rows instead.
 - If travel to or back is 0, `S` (single) is written.
+- Set a day's **Type** to *Travel only* for days you only travel (e.g. to the hotel the
+  evening before): only travel time is counted, no working hours, and the activity defaults
+  to "Travel to hotel". Start/end on site in the header come from site-work days only.
+- **Clear days & work description** starts a fresh report but keeps your fixed details.
 - The form covers one Sunday–Saturday week. Days in different weeks get one page per week,
   and the file name becomes e.g. `week45-46`. Week numbers are ISO weeks.
 
